@@ -49,20 +49,43 @@ class ExperimentReport:
         switches = self.best("context_switches")
         utilization = self.best("cpu_utilization", maximize=True)
         throughput = self.best("throughput", maximize=True)
+        makespan = self.best("makespan")
         notes = [
-            f"{self._names(wait)} 的平均等待时间最低。",
-            f"{self._names(response)} 的平均响应时间最低。",
-            f"{self._names(switches)} 的上下文切换次数最少。",
-            f"{self._names(utilization)} 的 CPU 利用率最高。",
-            f"{self._names(throughput)} 的吞吐量最高。",
+            f"在当前数据集“{self.dataset_name}”与当前参数下，"
+            f"{self._names(wait)} 的平均等待时间最低，为 "
+            f"{wait[0].average_waiting_time:.2f} Tick。",
+            f"当前实验中，{self._names(response)} 的平均响应时间最低，为 "
+            f"{response[0].average_response_time:.2f} Tick。",
+            f"当前实验中，{self._names(switches)} 的上下文切换次数最少，为 "
+            f"{switches[0].context_switches} 次；更少通常意味着调度开销更低，"
+            "但应结合响应性与公平性共同评价。",
+            f"当前实验中，{self._names(utilization)} 的 CPU 利用率最高，为 "
+            f"{utilization[0].cpu_utilization * 100:.1f}%。",
+            f"当前实验中，{self._names(throughput)} 的吞吐量最高，为 "
+            f"{throughput[0].throughput:.3f} 个/Tick。",
+            f"当前实验中，{self._names(makespan)} 的 Makespan 最短，为 "
+            f"{makespan[0].makespan} Tick。",
         ]
 
-        realtime = [result for result in self.results if result.algorithm_name == "EDF"]
-        if realtime:
-            result = realtime[0]
+        realtime = [
+            result
+            for result in self.results
+            if result.algorithm_name in {"EDF", "RMS"}
+        ]
+        for result in realtime:
             notes.append(
-                f"EDF 本次产生 {result.deadline_miss_count} 个 Deadline Miss，"
-                f"Miss Rate 为 {result.deadline_miss_rate * 100:.1f}%。"
+                f"在当前数据集与当前参数下，{result.algorithm_name} 产生 "
+                f"{result.deadline_miss_count} 个 "
+                f"Deadline Miss，Miss Rate 为 {result.deadline_miss_rate * 100:.1f}%，"
+                f"满足率为 {result.deadline_satisfaction_rate * 100:.1f}%。"
+            )
+        priority = [
+            result for result in self.results if result.algorithm_name.startswith("Priority")
+        ]
+        if priority:
+            notes.append(
+                f"当前实验中，{priority[0].algorithm_name} 的最大等待时间为 "
+                f"{priority[0].maximum_waiting_time} Tick，可用于观察潜在饥饿风险。"
             )
         if self.skipped:
             notes.append(

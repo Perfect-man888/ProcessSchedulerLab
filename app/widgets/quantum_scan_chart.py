@@ -1,5 +1,7 @@
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QToolTip
 
 from app.models.schedule_result import ScheduleResult
 
@@ -12,9 +14,15 @@ class QuantumScanChart(FigureCanvasQTAgg):
         super().__init__(self.figure)
         self.setParent(parent)
         self.setMinimumHeight(310)
+        self._data: tuple[tuple[int, ScheduleResult], ...] = ()
+        self.mpl_connect("motion_notify_event", self._show_hover_value)
+        self.setToolTip(
+            "蓝线：平均周转时间；橙线：平均响应时间；绿线：上下文切换次数。"
+        )
         self.set_data(())
 
     def set_data(self, data: tuple[tuple[int, ScheduleResult], ...]) -> None:
+        self._data = tuple(data)
         self.figure.clear()
         self.figure.patch.set_facecolor("#FFFFFF")
         axis = self.figure.add_subplot(111)
@@ -61,8 +69,8 @@ class QuantumScanChart(FigureCanvasQTAgg):
         upper = max((*turnaround, *response))
         padding = max((upper - lower) * 0.16, upper * 0.05, 1.0)
         axis.set_ylim(max(0, lower - padding), upper + padding)
-        axis.set_xlabel("Quantum (ticks)", color="#667085", fontsize=8)
-        axis.set_ylabel("Average ticks", color="#667085", fontsize=8)
+        axis.set_xlabel("Quantum (Tick)", color="#667085", fontsize=8)
+        axis.set_ylabel("Average Time (Tick)", color="#667085", fontsize=8)
         axis.grid(axis="y", color="#E9EDF3", linewidth=0.8)
         axis.set_axisbelow(True)
         axis.tick_params(axis="y", colors="#98A2B3", labelsize=7)
@@ -86,7 +94,7 @@ class QuantumScanChart(FigureCanvasQTAgg):
         switch_upper = max(switches)
         switch_padding = max((switch_upper - switch_lower) * 0.14, 1.0)
         right.set_ylim(max(0, switch_lower - switch_padding), switch_upper + switch_padding)
-        right.set_ylabel("Context switches", color="#667085", fontsize=8)
+        right.set_ylabel("Context Switch Count", color="#667085", fontsize=8)
         right.tick_params(colors="#98A2B3", labelsize=7)
         right.spines["top"].set_visible(False)
         right.spines["right"].set_color("#E7ECF3")
@@ -108,4 +116,21 @@ class QuantumScanChart(FigureCanvasQTAgg):
             borderpad=0.55,
             columnspacing=1.3,
             handlelength=1.9,
+        )
+
+    def _show_hover_value(self, event) -> None:
+        """使用 Matplotlib 自身事件显示点位值，不增加第三方图表依赖。"""
+
+        if not self._data or event.xdata is None:
+            return
+        quantum, result = min(self._data, key=lambda item: abs(item[0] - event.xdata))
+        if abs(quantum - event.xdata) > 0.45:
+            return
+        QToolTip.showText(
+            QCursor.pos(),
+            f"Quantum: {quantum} Tick\n"
+            f"Avg Turnaround: {result.average_turnaround_time:.2f} Tick\n"
+            f"Avg Response: {result.average_response_time:.2f} Tick\n"
+            f"Context Switches: {result.context_switches}",
+            self,
         )

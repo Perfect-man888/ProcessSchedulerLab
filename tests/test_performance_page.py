@@ -35,6 +35,8 @@ def test_empty_current_dataset_and_preset_selection(qapp):
     assert page.run_button.isEnabled()
     assert "固定进程" in page.dataset_description.text()
     assert page.report is None
+    assert "实验目的" in page.profile_purpose.text()
+    assert "报告建议" in page.profile_report.text()
 
 
 def test_preset_runs_all_algorithms_and_populates_analysis(qapp):
@@ -81,6 +83,21 @@ def test_metric_table_uses_numeric_sorting(qapp):
         for row in range(page.table.rowCount())
     ]
     assert values == sorted(values)
+
+
+def test_realtime_scope_runs_only_edf_and_rms(qapp):
+    manager, page = make_page()
+    page.dataset_combo.setCurrentIndex(3)
+    page.analysis_scope_combo.setCurrentIndex(3)
+
+    assert page.run_comparison()
+
+    assert [result.algorithm_name for result in page.report.results] == ["EDF", "RMS"]
+    assert page.table.rowCount() == 2
+    assert page.table.columnCount() == 12
+    assert page.table.item(0, 10).text().endswith("%")
+    assert page.table.item(0, 11).text().endswith("%")
+    assert "实时重点" in page.scope_hint.text()
 
 
 def test_main_window_uses_real_performance_page(qapp):
@@ -175,8 +192,34 @@ def test_performance_page_runs_quantum_scan_in_background(qapp):
     assert page._thread is None
     assert page.status_label.text() == "●  扫描完成"
     assert "Quantum=" in page.quantum_observation.text()
+    assert "Quantum =" in page.quantum_recommendation_value.text()
+    assert "Response 40%" in page.quantum_recommendation_weights.text()
+    assert page.copy_conclusion_button.isEnabled()
     # 扫描图应绘制出曲线（主坐标轴两条折线）
     assert len(page.quantum_chart.figure.axes[0].lines) == 2
+
+
+def test_copy_conclusions_produces_report_ready_plain_text(qapp):
+    manager, page = make_page()
+    page.dataset_combo.setCurrentIndex(2)
+    _, processes = page._selected_dataset()
+    data = ExperimentService().run_quantum_scan(processes, quantum_range=(1, 2, 3))
+    page._render_quantum_scan(data)
+
+    page.copy_conclusions()
+
+    copied = qapp.clipboard().text()
+    assert "数据集：分时交互负载" in copied
+    assert "推荐折中 Quantum" in copied
+    assert "Response 40%" in copied
+    assert "当前数据集、当前参数和当前评价权重" in copied
+
+
+def test_metric_table_headers_have_centralized_chinese_tooltips(qapp):
+    manager, page = make_page()
+
+    assert "进程 PID" in page.table.horizontalHeaderItem(7).toolTip()
+    assert "Miss 数" in page.table.horizontalHeaderItem(10).toolTip()
 
 
 def test_switching_dataset_clears_previous_analysis(qapp):

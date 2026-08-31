@@ -163,3 +163,71 @@ def test_state_counts_include_all_states(manager):
     assert counts[ProcessState.NEW] == 0
     assert counts[ProcessState.RUNNING] == 0
     assert counts[ProcessState.FINISHED] == 0
+
+
+def test_update_process_is_atomic_and_preserves_pid(manager):
+    process = create_process(manager, memory_mb=512, io_devices=1)
+    created_at = process.created_at
+
+    updated = manager.update_process(
+        process.pid,
+        name="Edited Worker",
+        arrival_time=2,
+        burst_time=12,
+        priority=1,
+        memory_mb=768,
+        io_devices=2,
+        deadline=30,
+        period=40,
+        io_interval=3,
+        io_duration=2,
+    )
+
+    assert updated is process
+    assert updated.pid == "P001"
+    assert updated.created_at == created_at
+    assert updated.name == "Edited Worker"
+    assert updated.remaining_time == 12
+    assert updated.state is ProcessState.NEW
+    assert updated.io_interval == 3
+    assert updated.io_duration == 2
+    assert manager.resource_manager.resource.used_memory_mb == 768
+    assert manager.resource_manager.resource.used_io_devices == 2
+
+
+def test_update_process_resource_failure_leaves_original_unchanged(manager):
+    process = create_process(manager, memory_mb=512, io_devices=1)
+    before = (process.name, process.memory_mb, process.io_devices)
+
+    with pytest.raises(ValueError, match="超过系统总内存"):
+        manager.update_process(
+            process.pid,
+            name="Too Large",
+            arrival_time=0,
+            burst_time=8,
+            priority=3,
+            memory_mb=9000,
+            io_devices=1,
+        )
+
+    assert (process.name, process.memory_mb, process.io_devices) == before
+    assert manager.resource_manager.resource.used_memory_mb == 512
+
+
+def test_reset_for_configuration_clears_runtime_and_restores_resources(manager):
+    process = create_process(manager)
+    manager.resource_manager.release(process.memory_mb, process.io_devices)
+    process.resources_allocated = False
+    process.state = ProcessState.FINISHED
+    process.remaining_time = 0
+    process.start_time = 1
+    process.finish_time = 9
+
+    manager.reset_for_configuration()
+
+    assert process.state is ProcessState.READY
+    assert process.remaining_time == process.burst_time
+    assert process.start_time is None
+    assert process.finish_time is None
+    assert process.resources_allocated
+    assert manager.resource_manager.resource.used_memory_mb == process.memory_mb

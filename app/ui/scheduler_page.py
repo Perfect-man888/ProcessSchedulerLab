@@ -17,6 +17,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.data.scheduling_profiles import (
+    ALGORITHM_PROFILES,
+    COURSE_COVERAGE_TEXT,
+    SYSTEM_TYPE_PROFILES,
+    algorithms_for,
+)
 from app.models.process import Process, ProcessState
 from app.models.simulation_event import SimulationEventType
 from app.models.simulation_state import SimulationStatus
@@ -49,27 +55,14 @@ class SchedulerPanel(QFrame):
 class SchedulerPage(QWidget):
     """调度算法选择、运行控制和逐 Tick 可视化实验主界面。"""
 
-    ALGORITHMS = (
-        ("FCFS · 先来先服务", "fcfs"),
-        ("SJF · 短作业优先", "sjf"),
-        ("SRTF · 最短剩余时间", "srtf"),
-        ("Priority · 优先级", "priority"),
-        ("Round Robin · 时间片轮转", "round_robin"),
-        ("EDF · 最早截止时间", "edf"),
-        ("RMS · 单调速率调度", "rms"),
-        ("MLFQ · 多级反馈队列", "mlfq"),
+    ALGORITHMS = tuple(
+        (ALGORITHM_PROFILES[key].name, key)
+        for key in ("fcfs", "sjf", "srtf", "priority", "round_robin", "edf", "rms", "mlfq")
     )
     SPEEDS = (("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0), ("5×", 5.0))
 
     DESCRIPTIONS = {
-        "fcfs": "按到达顺序运行，规则直观且不会发生策略抢占。",
-        "sjf": "CPU 空闲时优先选择服务时间最短的就绪进程。",
-        "srtf": "新进程到达时，可抢占剩余时间更长的当前进程。",
-        "priority": "数字越小优先级越高，可选择抢占式或非抢占式。",
-        "round_robin": "按固定时间片循环分配 CPU，适合分时交互场景。",
-        "edf": "优先执行绝对截止时间最早的任务，要求全部进程填写 Deadline。",
-        "rms": "周期越短优先级越高，静态优先级实时调度，要求全部进程填写 Period。",
-        "mlfq": "新任务从高优先级队列开始，时间片耗尽后逐级下沉。",
+        key: profile.description for key, profile in ALGORITHM_PROFILES.items()
     }
 
     def __init__(
@@ -83,6 +76,7 @@ class SchedulerPage(QWidget):
         self.process_manager = process_manager
         self.simulation_service = simulation_service
         self.settings_service = settings_service
+        self._loaded_selection: tuple[str, str] | None = None
 
         self._build_ui()
         if self.settings_service is not None:
@@ -90,11 +84,14 @@ class SchedulerPage(QWidget):
             self._sync_setting_defaults()
         self.process_manager.changed.connect(self.refresh)
         self.simulation_service.changed.connect(self.refresh)
+        self.system_type_combo.currentIndexChanged.connect(
+            self._on_system_type_changed
+        )
         self.algorithm_combo.currentIndexChanged.connect(
             self._on_algorithm_changed
         )
         self.speed_combo.currentIndexChanged.connect(self._on_speed_changed)
-        self._on_algorithm_changed(0)
+        self._on_system_type_changed(0)
         self.refresh()
 
     def _sync_setting_defaults(self) -> None:
@@ -127,11 +124,15 @@ class SchedulerPage(QWidget):
         root.addLayout(self._build_stat_cards())
         root.addWidget(self._build_timeline_panel())
 
-        lower = QHBoxLayout()
-        lower.setSpacing(16)
-        lower.addWidget(self._build_queue_panel(), 4)
-        lower.addWidget(self._build_event_panel(), 6)
-        root.addLayout(lower)
+        self.lower_layout = QGridLayout()
+        self.lower_layout.setSpacing(16)
+        self.queue_panel = self._build_queue_panel()
+        self.event_panel = self._build_event_panel()
+        self.lower_layout.addWidget(self.queue_panel, 0, 0)
+        self.lower_layout.addWidget(self.event_panel, 0, 1)
+        self.lower_layout.setColumnStretch(0, 4)
+        self.lower_layout.setColumnStretch(1, 6)
+        root.addLayout(self.lower_layout)
         root.addWidget(self._build_process_panel())
         root.addStretch()
 
@@ -172,6 +173,7 @@ class SchedulerPage(QWidget):
         title.setObjectName("PanelTitle")
         self.algorithm_description = QLabel()
         self.algorithm_description.setObjectName("PanelSubtitle")
+        self.algorithm_description.setWordWrap(True)
         title_box.addWidget(title)
         title_box.addWidget(self.algorithm_description)
         heading.addLayout(title_box)
@@ -183,34 +185,44 @@ class SchedulerPage(QWidget):
 
         config = QGridLayout()
         config.setSpacing(12)
+        self.system_type_combo = FilterCombo()
+        self.system_type_combo.setObjectName("SchedulerCombo")
+        self.system_type_combo.addItems(
+            [profile.name for profile in SYSTEM_TYPE_PROFILES]
+        )
+        config.addWidget(self._field("系统类型", self.system_type_combo), 0, 0)
+
         self.algorithm_combo = FilterCombo()
         self.algorithm_combo.setObjectName("SchedulerCombo")
-        self.algorithm_combo.addItems([name for name, _ in self.ALGORITHMS])
-        config.addWidget(self._field("调度算法", self.algorithm_combo), 0, 0)
+        self._visible_algorithm_keys = SYSTEM_TYPE_PROFILES[0].algorithm_keys
+        self.algorithm_combo.addItems(
+            [profile.name for profile in algorithms_for(SYSTEM_TYPE_PROFILES[0].key)]
+        )
+        config.addWidget(self._field("调度算法", self.algorithm_combo), 0, 1)
 
         self.parameter_stack = QStackedWidget()
         self.parameter_stack.setObjectName("ParameterStack")
         self.parameter_stack.setFixedHeight(66)
         self._build_parameter_pages()
-        config.addWidget(self.parameter_stack, 0, 1)
+        config.addWidget(self.parameter_stack, 1, 0, 1, 2)
 
         self.speed_combo = FilterCombo()
         self.speed_combo.setObjectName("SchedulerCombo")
         self.speed_combo.addItems([name for name, _ in self.SPEEDS])
         self.speed_combo.setCurrentIndex(1)
-        config.addWidget(self._field("仿真速度", self.speed_combo), 1, 0)
+        config.addWidget(self._field("仿真速度", self.speed_combo), 2, 0)
 
         self.switch_cost_combo = FilterCombo()
         self.switch_cost_combo.setObjectName("SchedulerCombo")
         self.switch_cost_combo.addItems([name for name, _ in SWITCH_COSTS])
         self.switch_cost_combo.currentIndexChanged.connect(self._on_switch_cost_changed)
-        config.addWidget(self._field("上下文切换开销", self.switch_cost_combo), 1, 1)
-        config.setColumnStretch(0, 2)
-        config.setColumnStretch(1, 3)
+        config.addWidget(self._field("上下文切换开销", self.switch_cost_combo), 2, 1)
+        config.setColumnStretch(0, 1)
+        config.setColumnStretch(1, 2)
         layout.addLayout(config)
+        layout.addLayout(self._build_profile_cards())
 
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
+        actions = FlowLayout(horizontal_spacing=10, vertical_spacing=10)
         self.load_button = self._button("加载 / 应用算法", "SecondaryButton")
         self.start_button = self._button("▶  开始运行", "SuccessButton")
         self.pause_button = self._button("Ⅱ  暂停", "SecondaryButton")
@@ -240,10 +252,10 @@ class SchedulerPage(QWidget):
         return panel
 
     def _build_parameter_pages(self) -> None:
-        neutral = QLabel("此算法无需额外参数")
-        neutral.setObjectName("ParameterHint")
-        neutral.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.parameter_stack.addWidget(neutral)
+        self.neutral_parameter_hint = QLabel("此算法无需额外参数")
+        self.neutral_parameter_hint.setObjectName("ParameterHint")
+        self.neutral_parameter_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.parameter_stack.addWidget(self.neutral_parameter_hint)
 
         priority = QWidget()
         priority_row = QHBoxLayout(priority)
@@ -257,11 +269,18 @@ class SchedulerPage(QWidget):
         self.priority_aging_combo.addItems(
             ["关闭 Aging", "Aging 2 Tick", "Aging 4 Tick", "Aging 6 Tick"]
         )
+        self.priority_aging_combo.setToolTip(
+            "Aging：READY 进程等待达到指定 Tick 后逐步提升动态优先级，用于缓解"
+            "低优先级任务长期得不到 CPU 的饥饿问题。Tick 越小，老化越快。"
+        )
         priority_row.addWidget(self.priority_mode_combo)
         priority_row.addWidget(self.priority_aging_combo)
         self.parameter_stack.addWidget(self._field("优先级模式 / 饥饿防止", priority))
 
-        self.quantum_input = NumberInput(1, 20, 2, "Tick")
+        self.quantum_input = NumberInput(1, 8, 2, "Tick")
+        self.quantum_input.setToolTip(
+            "Quantum 越小通常响应越快、切换越多；越大则逐渐接近 FCFS。"
+        )
         self.parameter_stack.addWidget(self._field("时间片 Quantum", self.quantum_input))
 
         mlfq = QWidget()
@@ -276,7 +295,51 @@ class SchedulerPage(QWidget):
         self.boost_input = NumberInput(1, 100, 10, "Boost")
         for control in (*self.mlfq_inputs, self.boost_input):
             row.addWidget(control)
+        mlfq.setToolTip(
+            "Q1/Q2/Q3 为三级队列时间片；Boost 周期性将等待任务提升至最高队列。"
+        )
         self.parameter_stack.addWidget(self._field("MLFQ 时间片 / 提升周期", mlfq))
+
+    def _build_profile_cards(self) -> QGridLayout:
+        row = QGridLayout()
+        row.setSpacing(12)
+
+        self.system_card = QFrame()
+        self.system_card.setObjectName("SchedulerInfoCard")
+        system_layout = QVBoxLayout(self.system_card)
+        system_layout.setContentsMargins(15, 12, 15, 13)
+        system_layout.setSpacing(5)
+        self.system_profile_title = QLabel()
+        self.system_profile_title.setObjectName("SchedulerInfoTitle")
+        self.system_profile_description = QLabel()
+        self.system_profile_description.setObjectName("SchedulerInfoBody")
+        self.system_profile_description.setWordWrap(True)
+        self.system_profile_metrics = QLabel()
+        self.system_profile_metrics.setObjectName("SchedulerInfoMetrics")
+        self.system_profile_metrics.setWordWrap(True)
+        system_layout.addWidget(self.system_profile_title)
+        system_layout.addWidget(self.system_profile_description)
+        system_layout.addWidget(self.system_profile_metrics)
+
+        self.coverage_card = QFrame()
+        self.coverage_card.setObjectName("CourseCoverageCard")
+        coverage_layout = QVBoxLayout(self.coverage_card)
+        coverage_layout.setContentsMargins(15, 12, 15, 13)
+        coverage_layout.setSpacing(5)
+        coverage_title = QLabel("课程设计覆盖")
+        coverage_title.setObjectName("SchedulerInfoTitle")
+        coverage_body = QLabel(COURSE_COVERAGE_TEXT)
+        coverage_body.setObjectName("CourseCoverageBody")
+        coverage_body.setWordWrap(True)
+        coverage_layout.addWidget(coverage_title)
+        coverage_layout.addWidget(coverage_body)
+
+        row.addWidget(self.system_card, 0, 0)
+        row.addWidget(self.coverage_card, 0, 1)
+        row.setColumnStretch(0, 3)
+        row.setColumnStretch(1, 2)
+        self.profile_layout = row
+        return row
 
     @staticmethod
     def _field(title: str, control: QWidget) -> QWidget:
@@ -296,18 +359,68 @@ class SchedulerPage(QWidget):
         button.setObjectName(object_name)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setMinimumHeight(38)
+        button.setMinimumWidth(150)
         return button
 
-    def _build_stat_cards(self) -> QHBoxLayout:
-        layout = QHBoxLayout()
+    def _build_stat_cards(self) -> QGridLayout:
+        layout = QGridLayout()
         layout.setSpacing(14)
         self.clock_card = StatCard("SIMULATION CLOCK", "T = 0", "等待实验加载", "CLK", COLORS["primary"])
         self.cpu_card = StatCard("CURRENT CPU", "IDLE", "暂无运行进程", "CPU", COLORS["success"])
         self.utilization_card = StatCard("CPU UTILIZATION", "0.0%", "0 个忙碌 Tick", "USE", COLORS["cyan"])
         self.switch_card = StatCard("CONTEXT SWITCH", "0", "进程切换次数", "CTX", COLORS["purple"])
-        for card in (self.clock_card, self.cpu_card, self.utilization_card, self.switch_card):
-            layout.addWidget(card)
+        self.stat_cards = (
+            self.clock_card,
+            self.cpu_card,
+            self.utilization_card,
+            self.switch_card,
+        )
+        for column, card in enumerate(self.stat_cards):
+            layout.addWidget(card, 0, column)
+            layout.setColumnStretch(column, 1)
+        self.stat_layout = layout
         return layout
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if not hasattr(self, "stat_cards"):
+            return
+        self._apply_responsive_layout(self.width() < 1120)
+
+    def _apply_responsive_layout(self, compact: bool) -> None:
+        if getattr(self, "_compact_layout", None) is compact:
+            return
+        self._compact_layout = compact
+
+        for card in self.stat_cards:
+            self.stat_layout.removeWidget(card)
+        for index, card in enumerate(self.stat_cards):
+            row, column = divmod(index, 2) if compact else (0, index)
+            self.stat_layout.addWidget(card, row, column)
+        for column in range(4):
+            self.stat_layout.setColumnStretch(column, 1 if (not compact or column < 2) else 0)
+
+        self.profile_layout.removeWidget(self.system_card)
+        self.profile_layout.removeWidget(self.coverage_card)
+        self.profile_layout.addWidget(self.system_card, 0, 0)
+        self.profile_layout.addWidget(
+            self.coverage_card,
+            1 if compact else 0,
+            0 if compact else 1,
+        )
+        self.profile_layout.setColumnStretch(0, 3)
+        self.profile_layout.setColumnStretch(1, 0 if compact else 2)
+
+        self.lower_layout.removeWidget(self.queue_panel)
+        self.lower_layout.removeWidget(self.event_panel)
+        self.lower_layout.addWidget(self.queue_panel, 0, 0)
+        self.lower_layout.addWidget(
+            self.event_panel,
+            1 if compact else 0,
+            0 if compact else 1,
+        )
+        self.lower_layout.setColumnStretch(0, 1 if compact else 4)
+        self.lower_layout.setColumnStretch(1, 0 if compact else 6)
 
     def _build_timeline_panel(self) -> SchedulerPanel:
         panel = SchedulerPanel()
@@ -444,11 +557,43 @@ class SchedulerPage(QWidget):
         table.verticalHeader().setDefaultSectionSize(36)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
+    def _on_system_type_changed(self, index: int) -> None:
+        if not 0 <= index < len(SYSTEM_TYPE_PROFILES):
+            return
+        profile = SYSTEM_TYPE_PROFILES[index]
+        self._visible_algorithm_keys = profile.algorithm_keys
+        self.algorithm_combo.clear()
+        self.algorithm_combo.addItems(
+            [item.name for item in algorithms_for(profile.key)]
+        )
+        self.system_profile_title.setText(profile.name)
+        self.system_profile_description.setText(profile.description)
+        self.system_profile_metrics.setText(
+            "重点关注 · " + " / ".join(profile.focus_metrics)
+        )
+        self._on_algorithm_changed(self.algorithm_combo.currentIndex())
+
+    def _selected_algorithm_key(self) -> str:
+        index = self.algorithm_combo.currentIndex()
+        if not 0 <= index < len(self._visible_algorithm_keys):
+            raise ValueError("请选择调度算法。")
+        return self._visible_algorithm_keys[index]
+
     def _on_algorithm_changed(self, index: int) -> None:
-        key = self.ALGORITHMS[index][1]
+        if not 0 <= index < len(self._visible_algorithm_keys):
+            return
+        key = self._visible_algorithm_keys[index]
         page = {"priority": 1, "round_robin": 2, "mlfq": 3}.get(key, 0)
         self.parameter_stack.setCurrentIndex(page)
-        self.algorithm_description.setText(self.DESCRIPTIONS[key])
+        profile = ALGORITHM_PROFILES[key]
+        self.algorithm_description.setText(profile.description)
+        self.neutral_parameter_hint.setText(profile.parameter_hint)
+        if hasattr(self, "run_status_label"):
+            self.refresh()
+
+    def _selection_signature(self) -> tuple[str, str]:
+        system_index = self.system_type_combo.currentIndex()
+        return SYSTEM_TYPE_PROFILES[system_index].key, self._selected_algorithm_key()
 
     def _on_speed_changed(self, index: int) -> None:
         self.simulation_service.set_speed(self.SPEEDS[index][1])
@@ -457,7 +602,7 @@ class SchedulerPage(QWidget):
         self.simulation_service.set_switch_cost(SWITCH_COSTS[index][1])
 
     def _scheduler_selection(self) -> tuple[str, dict]:
-        key = self.ALGORITHMS[self.algorithm_combo.currentIndex()][1]
+        key = self._selected_algorithm_key()
         options = {}
         if key == "priority":
             options["preemptive"] = self.priority_mode_combo.currentIndex() == 0
@@ -478,6 +623,7 @@ class SchedulerPage(QWidget):
         except (TypeError, ValueError) as error:
             MessageDialog.show_error(self, "无法加载实验", str(error))
             return False
+        self._loaded_selection = (SYSTEM_TYPE_PROFILES[self.system_type_combo.currentIndex()].key, key)
         self.refresh()
         return True
 
@@ -512,9 +658,14 @@ class SchedulerPage(QWidget):
         loaded = scheduler is not None
 
         self.process_hint.setText(f"当前实验集 · {len(self.process_manager.processes)} 个进程")
-        self.loaded_algorithm_label.setText(
-            f"当前算法：{scheduler.name}" if loaded else "当前算法：—"
-        )
+        selection_matches = loaded and self._loaded_selection == self._selection_signature()
+        if not loaded:
+            loaded_text = "当前算法：—"
+        elif selection_matches:
+            loaded_text = f"当前算法：{scheduler.name}"
+        else:
+            loaded_text = f"当前算法：{scheduler.name} · 当前选择待应用"
+        self.loaded_algorithm_label.setText(loaded_text)
         self.clock_card.set_value(f"T = {state.clock}")
         self.clock_card.set_subtitle(
             "统一离散仿真时钟" if loaded else "等待实验加载"
@@ -656,6 +807,9 @@ class SchedulerPage(QWidget):
             SimulationEventType.PREEMPT: COLORS["danger"],
             SimulationEventType.TIMESLICE: COLORS["warning"],
             SimulationEventType.FINISH: COLORS["primary"],
+            SimulationEventType.DEADLINE_MISS: COLORS["danger"],
+            SimulationEventType.AGING: COLORS["purple"],
+            SimulationEventType.BOOST: COLORS["cyan"],
         }
         for row, event in enumerate(events):
             values = (event.time_text, event.event_type.display_name, event.pid or "—", event.detail or "—")
@@ -703,15 +857,17 @@ class SchedulerPage(QWidget):
         running = status is SimulationStatus.RUNNING
         finished = status is SimulationStatus.FINISHED
         has_processes = bool(self.process_manager.processes)
+        selection_matches = loaded and self._loaded_selection == self._selection_signature()
         self.load_button.setEnabled(has_processes and not running)
-        self.start_button.setEnabled(loaded and not running and not finished)
+        self.start_button.setEnabled(selection_matches and not running and not finished)
         self.pause_button.setEnabled(loaded and running)
-        self.step_button.setEnabled(loaded and not running and not finished)
-        self.reset_button.setEnabled(loaded and not running)
+        self.step_button.setEnabled(selection_matches and not running and not finished)
+        self.reset_button.setEnabled(selection_matches and not running)
         self.start_button.setText(
             "▶  继续运行" if status is SimulationStatus.PAUSED else "▶  开始运行"
         )
         for control in (
+            self.system_type_combo,
             self.algorithm_combo,
             self.priority_mode_combo,
             self.priority_aging_combo,

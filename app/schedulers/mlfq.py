@@ -5,6 +5,8 @@ from app.schedulers.base import (
     BaseScheduler,
     PreemptionReason,
     SchedulerCategory,
+    SchedulerNotice,
+    SchedulerNoticeType,
 )
 
 
@@ -43,7 +45,7 @@ class MLFQScheduler(BaseScheduler):
     def queue_level(self, process: Process) -> int:
         return self._levels.get(process.pid, 0)
 
-    def _apply_priority_boost(self, now: int) -> None:
+    def _apply_priority_boost(self, now: int) -> bool:
         if (
             now > 0
             and now % self.boost_interval == 0
@@ -53,6 +55,18 @@ class MLFQScheduler(BaseScheduler):
                 self._levels[pid] = 0
                 self._slice_used[pid] = 0
             self._last_boost_at = now
+            return True
+        return False
+
+    def on_clock(self, ready, current, now: int) -> tuple[SchedulerNotice, ...]:
+        if self._apply_priority_boost(now):
+            return (
+                SchedulerNotice(
+                    SchedulerNoticeType.BOOST,
+                    f"Priority Boost：全部活动任务提升至 Q0（周期 {self.boost_interval} Tick）",
+                ),
+            )
+        return ()
 
     def choose_next(
         self,

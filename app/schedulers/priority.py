@@ -1,7 +1,12 @@
 from typing import Iterable
 
 from app.models.process import Process
-from app.schedulers.base import BaseScheduler, SchedulerCategory
+from app.schedulers.base import (
+    BaseScheduler,
+    SchedulerCategory,
+    SchedulerNotice,
+    SchedulerNoticeType,
+)
 
 
 class PriorityScheduler(BaseScheduler):
@@ -20,11 +25,31 @@ class PriorityScheduler(BaseScheduler):
         self.preemptive = preemptive
         self.aging_interval = aging_interval
         self._ready_since: dict[str, int] = {}
+        self._last_effective: dict[str, int] = {}
         mode = "Priority (Preemptive)" if preemptive else "Priority"
         self.name = f"{mode} + Aging" if aging_interval else mode
 
     def reset(self) -> None:
         self._ready_since.clear()
+        self._last_effective.clear()
+
+    def on_clock(self, ready, current, now: int) -> tuple[SchedulerNotice, ...]:
+        if self.aging_interval is None:
+            return ()
+        notices = []
+        for process in ready:
+            effective = self.effective_priority(process, now)
+            previous = self._last_effective.get(process.pid, process.priority)
+            if effective < previous:
+                notices.append(
+                    SchedulerNotice(
+                        SchedulerNoticeType.AGING,
+                        f"有效优先级 {previous} → {effective}",
+                        process.pid,
+                    )
+                )
+            self._last_effective[process.pid] = effective
+        return tuple(notices)
 
     def effective_priority(self, process: Process, now: int) -> int:
         """返回等待 Aging 后的有效优先级，数字仍是越小越高。"""
@@ -65,12 +90,15 @@ class PriorityScheduler(BaseScheduler):
 
     def on_ready(self, process: Process, now: int) -> None:
         self._ready_since.setdefault(process.pid, now)
+        self._last_effective.setdefault(process.pid, process.priority)
 
     def on_preempt(self, process: Process, now: int, reason) -> None:
         self._ready_since[process.pid] = now
 
     def on_dispatch(self, process: Process, now: int) -> None:
         self._ready_since.pop(process.pid, None)
+        self._last_effective.pop(process.pid, None)
 
     def on_finish(self, process: Process, now: int) -> None:
         self._ready_since.pop(process.pid, None)
+        self._last_effective.pop(process.pid, None)

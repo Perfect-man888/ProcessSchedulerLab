@@ -768,6 +768,40 @@ QLabel#ParameterHint {
     font-size: 9px;
 }
 
+QFrame#SchedulerInfoCard,
+QFrame#CourseCoverageCard {
+    background-color: #F8FAFF;
+    border: 1px solid #E1E7F5;
+    border-radius: 10px;
+}
+
+QFrame#CourseCoverageCard {
+    background-color: #F7FBF9;
+    border-color: #DCEDE5;
+}
+
+QLabel#SchedulerInfoTitle {
+    color: #25314A;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#SchedulerInfoBody,
+QLabel#CourseCoverageBody {
+    color: #667085;
+    font-size: 9px;
+}
+
+QLabel#SchedulerInfoMetrics {
+    color: #4F6EF7;
+    font-size: 9px;
+    font-weight: 600;
+}
+
+QLabel#CourseCoverageBody {
+    color: #39745C;
+}
+
 QToolButton#SchedulerCombo {
     min-height: 40px;
     padding-left: 13px;
@@ -935,6 +969,90 @@ QLabel#ObservationItem {
     border-radius: 9px;
     padding: 10px 12px;
     font-size: 10px;
+}
+
+QFrame#ExperimentProfileCard {
+    background-color: #F8FAFF;
+    border: 1px solid #DDE5FF;
+    border-radius: 11px;
+}
+
+QLabel#ExperimentProfileTitle {
+    color: #2F4FD0;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+QLabel#ExperimentProfileText,
+QLabel#ExperimentProfileMeta {
+    color: #475467;
+    font-size: 9px;
+}
+
+QLabel#ExperimentProfileMeta {
+    color: #344054;
+    font-weight: 650;
+}
+
+QLabel#ExperimentReportHint {
+    color: #3656D8;
+    background-color: #EEF2FF;
+    border-radius: 7px;
+    padding: 7px 10px;
+    font-size: 9px;
+}
+
+QFrame#QuantumRecommendationCard {
+    background-color: #F2F6FF;
+    border: 1px solid #CFDAFF;
+    border-radius: 11px;
+}
+
+QLabel#RecommendationTitle {
+    color: #2F4FD0;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+QLabel#RecommendationValue {
+    color: #172033;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+QLabel#RecommendationReason,
+QLabel#RecommendationWeights {
+    color: #475467;
+    font-size: 9px;
+}
+
+QLabel#RecommendationScope {
+    color: #667085;
+    font-size: 8px;
+}
+
+QTableWidget#MetricHelpTable {
+    background-color: #FFFFFF;
+    color: #344054;
+    border: 1px solid #E7ECF3;
+    gridline-color: #EEF1F5;
+    font-size: 9px;
+}
+
+QTableWidget#MetricHelpTable QHeaderView::section {
+    background-color: #F7F8FC;
+    color: #475467;
+    border: none;
+    border-bottom: 1px solid #E4E9F0;
+    padding: 8px;
+    font-weight: 700;
+}
+
+QToolTip {
+    color: #344054;
+    background-color: #FFFFFF;
+    border: 1px solid #D7DFEB;
+    padding: 7px 9px;
 }
 
 

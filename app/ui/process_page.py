@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.models.process import ProcessState
+from app.data.help_texts import PCB_HEADER_TOOLTIPS
+from app.models.process import Process, ProcessState
 from app.models.simulation_state import SimulationStatus
 from app.services.export_service import ExportService
 from app.services.process_manager import ProcessManager
@@ -39,10 +40,13 @@ class CreateProcessDialog(QDialog):
         self,
         manager: ProcessManager,
         parent=None,
+        *,
+        process: Process | None = None,
     ):
         super().__init__(parent)
 
         self.manager = manager
+        self.process = process
 
         self.setWindowTitle("创建新进程")
         self.setModal(True)
@@ -53,6 +57,8 @@ class CreateProcessDialog(QDialog):
         )
 
         self._build_ui()
+        if self.process is not None:
+            self._populate_process(self.process)
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -65,11 +71,13 @@ class CreateProcessDialog(QDialog):
         root.setSpacing(14)
 
         # Header
-        title = QLabel("创建新进程")
+        title = QLabel("编辑进程" if self.process is not None else "创建新进程")
         title.setObjectName("DialogTitle")
 
         subtitle = QLabel(
-            "设置 PCB、调度参数及系统资源需求。"
+            "修改 PCB 配置；PID 保持不变。"
+            if self.process is not None
+            else "设置 PCB、调度参数及系统资源需求。"
         )
         subtitle.setObjectName("DialogSubtitle")
 
@@ -102,7 +110,6 @@ class CreateProcessDialog(QDialog):
         basic_form.addRow("到达时间", self.arrival_input)
         basic_form.addRow("服务时间", self.burst_input)
         basic_form.addRow("优先级", self.priority_input)
-        root.addWidget(basic_section)
 
         resource_section, resource_form = self._form_section("系统资源")
         resource_form.addRow("内存需求", self.memory_input)
@@ -124,17 +131,28 @@ class CreateProcessDialog(QDialog):
         available.setObjectName("AvailableResourceLabel")
         resource_form.addRow("可用资源", available)
 
-        realtime_section, realtime_form = self._form_section("实时调度参数")
-        self.realtime_toggle = QCheckBox("启用 Deadline / Period")
+        realtime_section = QFrame()
+        realtime_section.setObjectName("DialogSection")
+        realtime_form = QHBoxLayout(realtime_section)
+        realtime_form.setContentsMargins(18, 14, 18, 14)
+        realtime_form.setSpacing(12)
+        realtime_heading = QLabel("实时调度参数")
+        realtime_heading.setObjectName("DialogSectionTitle")
+        self.realtime_toggle = QCheckBox("启用实时参数")
         self.realtime_toggle.setObjectName("RealtimeToggle")
-        realtime_form.addRow("实时任务", self.realtime_toggle)
-        realtime_form.addRow("Deadline", self.deadline_input)
-        realtime_form.addRow("Period（扩展字段）", self.period_input)
-        secondary_sections = QHBoxLayout()
-        secondary_sections.setSpacing(14)
-        secondary_sections.addWidget(resource_section, 1)
-        secondary_sections.addWidget(realtime_section, 1)
-        root.addLayout(secondary_sections)
+        realtime_form.addWidget(realtime_heading)
+        realtime_form.addWidget(self.realtime_toggle)
+        realtime_form.addStretch()
+        realtime_form.addWidget(QLabel("Deadline"))
+        realtime_form.addWidget(self.deadline_input, 1)
+        realtime_form.addWidget(QLabel("Period"))
+        realtime_form.addWidget(self.period_input, 1)
+        form_sections = QHBoxLayout()
+        form_sections.setSpacing(14)
+        form_sections.addWidget(basic_section, 1)
+        form_sections.addWidget(resource_section, 1)
+        root.addLayout(form_sections)
+        root.addWidget(realtime_section)
 
         self.deadline_input.setEnabled(False)
         self.period_input.setEnabled(False)
@@ -156,10 +174,10 @@ class CreateProcessDialog(QDialog):
             "SecondaryButton"
         )
 
-        create_button = QPushButton(
-            "创建进程"
+        self.submit_button = QPushButton(
+            "保存修改" if self.process is not None else "创建进程"
         )
-        create_button.setObjectName(
+        self.submit_button.setObjectName(
             "PrimaryButton"
         )
 
@@ -167,18 +185,39 @@ class CreateProcessDialog(QDialog):
             self.reject
         )
 
-        create_button.clicked.connect(
+        self.submit_button.clicked.connect(
             self._create_process
         )
-        create_button.setDefault(True)
+        self.submit_button.setDefault(True)
 
         buttons.addStretch()
         buttons.addWidget(cancel_button)
-        buttons.addWidget(create_button)
+        buttons.addWidget(self.submit_button)
 
         root.addLayout(buttons)
 
         self.name_input.setFocus()
+
+    def _populate_process(self, process: Process) -> None:
+        self.setWindowTitle(f"编辑进程 · {process.pid}")
+        self.name_input.setText(process.name)
+        self.arrival_input.setValue(process.arrival_time)
+        self.burst_input.setValue(process.burst_time)
+        self.priority_input.setValue(process.priority)
+        self.memory_input.setValue(process.memory_mb)
+        self.io_input.setValue(process.io_devices)
+        io_enabled = process.io_interval is not None
+        self.io_toggle.setChecked(io_enabled)
+        if process.io_interval is not None:
+            self.io_interval_input.setValue(process.io_interval)
+        if process.io_duration is not None:
+            self.io_duration_input.setValue(process.io_duration)
+        realtime_enabled = process.deadline is not None or process.period is not None
+        self.realtime_toggle.setChecked(realtime_enabled)
+        if process.deadline is not None:
+            self.deadline_input.setValue(process.deadline)
+        if process.period is not None:
+            self.period_input.setValue(process.period)
 
     def _form_section(self, title: str):
         section = QFrame()
@@ -218,28 +257,22 @@ class CreateProcessDialog(QDialog):
             io_interval = self.io_interval_input.value() if io_enabled else None
             io_duration = self.io_duration_input.value() if io_enabled else None
 
-            self.manager.create_process(
-                name=self.name_input.text(),
-                arrival_time=(
-                    self.arrival_input.value()
-                ),
-                burst_time=(
-                    self.burst_input.value()
-                ),
-                priority=(
-                    self.priority_input.value()
-                ),
-                memory_mb=(
-                    self.memory_input.value()
-                ),
-                io_devices=(
-                    self.io_input.value()
-                ),
-                deadline=deadline,
-                period=period,
-                io_interval=io_interval,
-                io_duration=io_duration,
-            )
+            values = {
+                "name": self.name_input.text(),
+                "arrival_time": self.arrival_input.value(),
+                "burst_time": self.burst_input.value(),
+                "priority": self.priority_input.value(),
+                "memory_mb": self.memory_input.value(),
+                "io_devices": self.io_input.value(),
+                "deadline": deadline,
+                "period": period,
+                "io_interval": io_interval,
+                "io_duration": io_duration,
+            }
+            if self.process is None:
+                self.manager.create_process(**values)
+            else:
+                self.manager.update_process(self.process.pid, **values)
 
         except ValueError as error:
 
@@ -260,7 +293,7 @@ class RandomProcessDialog(QDialog):
 
         self.setWindowTitle("随机生成进程")
         self.setModal(True)
-        self.setMinimumWidth(640)
+        self.setMinimumWidth(900)
 
         self.setObjectName("CreateProcessDialog")
 
@@ -297,7 +330,6 @@ class RandomProcessDialog(QDialog):
         distribution_form.addRow("平均到达间隔", self.interval_input)
         distribution_form.addRow("服务时间下限", self.burst_min_input)
         distribution_form.addRow("服务时间上限", self.burst_max_input)
-        root.addWidget(distribution_section)
 
         priority_section, priority_form = self._form_section("优先级与实时参数")
         priority_form.addRow("优先级下限", self.priority_min_input)
@@ -307,6 +339,19 @@ class RandomProcessDialog(QDialog):
         self.realtime_toggle.setObjectName("RealtimeToggle")
         priority_form.addRow("实时任务", self.realtime_toggle)
 
+        self.io_toggle = QCheckBox("为随机进程启用周期性 I/O 阻塞")
+        self.io_toggle.setObjectName("RealtimeToggle")
+        self.io_interval_input = NumberInput(1, 999, 2, "tick")
+        self.io_duration_input = NumberInput(1, 999, 2, "tick")
+        self.io_interval_input.setEnabled(False)
+        self.io_duration_input.setEnabled(False)
+        self.io_toggle.toggled.connect(self.io_interval_input.setEnabled)
+        self.io_toggle.toggled.connect(self.io_duration_input.setEnabled)
+        io_section, io_form = self._form_section("I/O 阻塞行为")
+        io_form.addRow("I/O 阻塞", self.io_toggle)
+        io_form.addRow("请求间隔", self.io_interval_input)
+        io_form.addRow("持续时间", self.io_duration_input)
+
         self.seed_toggle = QCheckBox("使用固定种子（可复现）")
         self.seed_toggle.setObjectName("RealtimeToggle")
         self.seed_toggle.setChecked(True)
@@ -314,7 +359,12 @@ class RandomProcessDialog(QDialog):
         priority_form.addRow("随机种子值", self.seed_input)
         self.seed_input.setEnabled(True)
         self.seed_toggle.toggled.connect(self.seed_input.setEnabled)
-        root.addWidget(priority_section)
+        option_sections = QHBoxLayout()
+        option_sections.setSpacing(14)
+        option_sections.addWidget(distribution_section, 1)
+        option_sections.addWidget(priority_section, 1)
+        option_sections.addWidget(io_section, 1)
+        root.addLayout(option_sections)
 
         note = QLabel(
             "提示：到达间隔为指数分布的均值，间隔越小负载越密集；"
@@ -367,6 +417,9 @@ class RandomProcessDialog(QDialog):
             priority_min=self.priority_min_input.value(),
             priority_max=self.priority_max_input.value(),
             include_realtime=self.realtime_toggle.isChecked(),
+            include_io=self.io_toggle.isChecked(),
+            io_interval=self.io_interval_input.value(),
+            io_duration=self.io_duration_input.value(),
         )
 
     def _generate(self):
@@ -399,6 +452,8 @@ class RandomProcessDialog(QDialog):
                     io_devices=process.io_devices,
                     deadline=process.deadline,
                     period=process.period,
+                    io_interval=process.io_interval,
+                    io_duration=process.io_duration,
                 )
         except ValueError as error:
             MessageDialog.show_error(self, "生成失败", str(error))
@@ -683,6 +738,7 @@ class ProcessPage(QWidget):
             "MEMORY",
             "I/O",
             "DEADLINE",
+            "PERIOD",
         ]
 
         self.table.setColumnCount(
@@ -692,6 +748,11 @@ class ProcessPage(QWidget):
         self.table.setHorizontalHeaderLabels(
             columns
         )
+
+        for index, name in enumerate(columns):
+            self.table.horizontalHeaderItem(index).setToolTip(
+                PCB_HEADER_TOOLTIPS[name]
+            )
 
         self.table.verticalHeader().setVisible(
             False
@@ -775,6 +836,11 @@ class ProcessPage(QWidget):
             "DangerButton"
         )
 
+        self.edit_button = QPushButton("编辑进程")
+        self.edit_button.setObjectName("SecondaryButton")
+        self.edit_button.setToolTip("修改所选 PCB 的调度、资源、实时与 I/O 参数。")
+        self.edit_button.clicked.connect(self.edit_selected)
+
         self.suspend_button.clicked.connect(
             self.suspend_selected
         )
@@ -792,6 +858,8 @@ class ProcessPage(QWidget):
         )
 
         actions.addStretch()
+
+        actions.addWidget(self.edit_button)
 
         actions.addWidget(
             self.suspend_button
@@ -980,6 +1048,7 @@ class ProcessPage(QWidget):
                     process.io_devices
                 ),
                 process.deadline_text,
+                process.period_text,
             ]
 
             for column, value in enumerate(
@@ -1067,6 +1136,7 @@ class ProcessPage(QWidget):
         self.suspend_button.setEnabled(enabled)
         self.activate_button.setEnabled(enabled)
         self.revoke_button.setEnabled(enabled)
+        self.edit_button.setEnabled(enabled)
 
         if pid is None:
             self.selected_label.setText("请选择一个进程")
@@ -1094,6 +1164,46 @@ class ProcessPage(QWidget):
     # =========================================================
     # Actions
     # =========================================================
+
+    def edit_selected(self):
+        if not self._allow_process_mutation("编辑进程"):
+            return
+        pid = self._selected_pid()
+        process = self.manager.get_process(pid) if pid is not None else None
+        if process is None:
+            return
+
+        has_progress = any(
+            item.start_time is not None
+            or item.finish_time is not None
+            or item.state
+            in {ProcessState.RUNNING, ProcessState.BLOCKED, ProcessState.FINISHED}
+            for item in self.manager.processes
+        )
+        loaded = (
+            self.simulation_service is not None
+            and self.simulation_service.scheduler is not None
+        )
+        if (has_progress or loaded) and not MessageDialog.confirm_danger(
+            self,
+            "编辑将重置调度进度",
+            "修改 PCB 配置需要清空当前甘特图、事件和已生成指标。\n"
+            "进程数据会保留并恢复到尚未运行的初始状态。",
+            "重置并编辑",
+        ):
+            return
+
+        if self.simulation_service is not None and loaded:
+            self.simulation_service.unload()
+        if has_progress or loaded:
+            try:
+                self.manager.reset_for_configuration()
+            except ValueError as error:
+                MessageDialog.show_error(self, "无法编辑进程", str(error))
+                return
+
+        dialog = CreateProcessDialog(self.manager, self, process=process)
+        dialog.exec()
 
     def suspend_selected(self):
 

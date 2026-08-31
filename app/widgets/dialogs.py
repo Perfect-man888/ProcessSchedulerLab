@@ -2,11 +2,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from app.data.help_texts import METRIC_TOOLTIPS
 
 
 class MessageDialog(QDialog):
@@ -97,3 +102,64 @@ class MessageDialog(QDialog):
             parent=parent,
         )
         return dialog.exec() == QDialog.DialogCode.Accepted
+
+
+class MetricHelpDialog(QDialog):
+    """课程答辩友好的性能指标速查表。"""
+
+    METRICS = (
+        "Waiting Time",
+        "Turnaround Time",
+        "Weighted Turnaround Time",
+        "Response Time",
+        "CPU Utilization",
+        "Throughput",
+        "Context Switch",
+        "Makespan",
+        "Deadline Miss",
+        "Deadline Miss Rate",
+        "Deadline Satisfaction",
+        "Quantum",
+        "Aging",
+        "MLFQ Boost",
+    )
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("MetricHelpDialog")
+        self.setWindowTitle("性能指标说明")
+        self.setModal(True)
+        self.resize(760, 560)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 22, 24, 20)
+        root.setSpacing(13)
+        title = QLabel("性能指标与实验术语")
+        title.setObjectName("DialogMessageTitle")
+        subtitle = QLabel("表格、图表和实验结论采用同一统计口径。")
+        subtitle.setObjectName("DialogMessageText")
+        root.addWidget(title)
+        root.addWidget(subtitle)
+
+        table = QTableWidget(len(self.METRICS), 2)
+        table.setObjectName("MetricHelpTable")
+        table.setHorizontalHeaderLabels(("术语", "中文解释与统计口径"))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setWordWrap(True)
+        for row, metric in enumerate(self.METRICS):
+            table.setItem(row, 0, QTableWidgetItem(metric))
+            table.setItem(row, 1, QTableWidgetItem(METRIC_TOOLTIPS[metric]))
+            table.setRowHeight(row, 52)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        root.addWidget(table, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        close = QPushButton("知道了")
+        close.setObjectName("PrimaryButton")
+        close.clicked.connect(self.accept)
+        buttons.addWidget(close)
+        root.addLayout(buttons)

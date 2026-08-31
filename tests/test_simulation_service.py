@@ -83,6 +83,56 @@ def test_fcfs_tick_engine_records_idle_metrics_and_resource_release(qapp):
     assert service.state.events[-1].event_type is SimulationEventType.FINISH
 
 
+def test_deadline_miss_is_recorded_in_event_stream(qapp):
+    manager = make_manager(
+        [{"pid": "P1", "arrival": 0, "burst": 2, "deadline": 1}]
+    )
+    service = SimulationService(manager)
+    service.load("edf")
+
+    result = run_until_finished(service)
+
+    assert result.deadline_miss_count == 1
+    assert any(
+        event.event_type is SimulationEventType.DEADLINE_MISS
+        for event in result.events
+    )
+    assert [event.event_type for event in result.events[-2:]] == [
+        SimulationEventType.FINISH,
+        SimulationEventType.DEADLINE_MISS,
+    ]
+
+
+def test_priority_aging_and_mlfq_boost_are_recorded(qapp):
+    priority_manager = make_manager(
+        [
+            {"pid": "P1", "arrival": 0, "burst": 5, "priority": 1},
+            {"pid": "P2", "arrival": 0, "burst": 1, "priority": 5},
+        ]
+    )
+    priority = SimulationService(priority_manager)
+    priority.load("priority", aging_interval=2)
+    priority_result = run_until_finished(priority)
+    assert any(
+        event.event_type is SimulationEventType.AGING
+        for event in priority_result.events
+    )
+
+    mlfq_manager = make_manager(
+        [
+            {"pid": "P1", "arrival": 0, "burst": 5},
+            {"pid": "P2", "arrival": 0, "burst": 3},
+        ]
+    )
+    mlfq = SimulationService(mlfq_manager)
+    mlfq.load("mlfq", boost_interval=2)
+    mlfq_result = run_until_finished(mlfq)
+    assert any(
+        event.event_type is SimulationEventType.BOOST
+        for event in mlfq_result.events
+    )
+
+
 def test_srtf_service_matches_deterministic_case_a(qapp):
     manager = make_manager(
         [

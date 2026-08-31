@@ -64,6 +64,27 @@ def test_realtime_mode_derives_deadline_and_period():
         assert process.deadline == process.arrival_time + round(process.burst_time * 3.0)
 
 
+def test_io_mode_adds_reproducible_blocking_parameters():
+    processes = RandomProcessGenerator(
+        RandomConfig(
+            count=5,
+            seed=9,
+            include_io=True,
+            io_interval=3,
+            io_duration=2,
+        )
+    ).generate()
+
+    assert all(process.io_interval == 3 for process in processes)
+    assert all(process.io_duration == 2 for process in processes)
+
+    disabled = RandomProcessGenerator(
+        RandomConfig(count=2, seed=9, include_io=False)
+    ).generate()
+    assert all(process.io_interval is None for process in disabled)
+    assert all(process.io_duration is None for process in disabled)
+
+
 def test_generator_rejects_invalid_configs():
     with pytest.raises(ValueError, match="数量"):
         RandomConfig(count=0)
@@ -77,3 +98,7 @@ def test_generator_rejects_invalid_configs():
         RandomConfig(priority_min=0)
     with pytest.raises(ValueError, match="Period"):
         RandomConfig(deadline_factor=5.0, period_factor=4.0)
+    with pytest.raises(ValueError, match="I/O 请求间隔"):
+        RandomConfig(io_interval=0)
+    with pytest.raises(ValueError, match="I/O 持续时间"):
+        RandomConfig(io_duration=0)

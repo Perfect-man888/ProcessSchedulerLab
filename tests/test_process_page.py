@@ -33,6 +33,10 @@ def test_filter_combo_has_deterministic_selection(qapp):
     control.setCurrentIndex(2)
     assert control.currentText() == "挂起"
 
+    control.clear()
+    control.addItems(["批处理", "分时"])
+    assert control.currentText() == "批处理"
+
 
 def test_create_dialog_realtime_toggle_and_submission(qapp):
     manager = ProcessManager(ResourceManager())
@@ -51,6 +55,34 @@ def test_create_dialog_realtime_toggle_and_submission(qapp):
     process = manager.processes[0]
     assert process.deadline == 12
     assert process.period == 20
+    assert dialog.result() == dialog.DialogCode.Accepted
+
+
+def test_edit_dialog_prefills_and_updates_all_process_parameters(qapp):
+    manager = ProcessManager(ResourceManager())
+    process = manager.create_process(
+        name="Worker",
+        arrival_time=0,
+        burst_time=5,
+        priority=3,
+        memory_mb=128,
+        io_devices=0,
+    )
+    dialog = CreateProcessDialog(manager, process=process)
+
+    assert dialog.windowTitle() == "编辑进程 · P001"
+    assert dialog.name_input.text() == "Worker"
+    assert dialog.submit_button.text() == "保存修改"
+    dialog.name_input.setText("Edited")
+    dialog.io_toggle.setChecked(True)
+    dialog.io_interval_input.setValue(3)
+    dialog.io_duration_input.setValue(2)
+    dialog._create_process()
+
+    assert manager.get_process("P001") is process
+    assert process.name == "Edited"
+    assert process.io_interval == 3
+    assert process.io_duration == 2
     assert dialog.result() == dialog.DialogCode.Accepted
 
 
@@ -93,6 +125,12 @@ def test_random_dialog_configures_distribution_parameters(qapp):
 
     dialog.realtime_toggle.setChecked(True)
     assert dialog._config().include_realtime
+    dialog.io_toggle.setChecked(True)
+    dialog.io_interval_input.setValue(4)
+    dialog.io_duration_input.setValue(3)
+    assert dialog._config().include_io
+    assert dialog._config().io_interval == 4
+    assert dialog._config().io_duration == 3
 
 
 def test_random_dialog_generates_and_adds_processes(qapp):
@@ -108,6 +146,20 @@ def test_random_dialog_generates_and_adds_processes(qapp):
     assert len(manager.processes) == 5
     assert all(2 <= process.burst_time <= 6 for process in manager.processes)
     assert dialog.result() == dialog.DialogCode.Accepted
+
+
+def test_random_dialog_generates_optional_io_behavior(qapp):
+    manager = ProcessManager(ResourceManager())
+    dialog = RandomProcessDialog(manager)
+    dialog.count_input.setValue(3)
+    dialog.io_toggle.setChecked(True)
+    dialog.io_interval_input.setValue(3)
+    dialog.io_duration_input.setValue(2)
+
+    dialog._generate()
+
+    assert all(process.io_interval == 3 for process in manager.processes)
+    assert all(process.io_duration == 2 for process in manager.processes)
 
 
 def test_random_dialog_rejects_insufficient_memory(qapp, monkeypatch):
@@ -146,7 +198,13 @@ def test_process_page_refreshes_table_and_state_badge(qapp):
     assert page.table.rowCount() == 1
     assert page.table.item(0, 0).text() == process.pid
     assert isinstance(page.table.cellWidget(0, 2), StateBadge)
+    assert page.table.columnCount() == 11
+    assert page.table.horizontalHeaderItem(10).text() == "PERIOD"
+    assert "RMS" in page.table.horizontalHeaderItem(10).toolTip()
     assert page.ready_card.value_label.text() == "1"
+
+    page.table.selectRow(0)
+    assert page.edit_button.isEnabled()
 
     manager.suspend_process(process.pid)
     assert process.state is ProcessState.SUSPENDED
@@ -237,3 +295,39 @@ def test_process_page_import_replaces_dataset_and_unloads_scheduler(
     assert manager.processes[0].name == "Imported"
     assert service.scheduler is None
     assert page.table.rowCount() == 1
+
+
+def test_editing_completed_process_confirms_and_resets_simulation(
+    qapp, monkeypatch
+):
+    manager = ProcessManager(ResourceManager())
+    process = manager.create_process(
+        name="Completed",
+        arrival_time=0,
+        burst_time=2,
+        priority=1,
+        memory_mb=64,
+        io_devices=0,
+    )
+    service = SimulationService(manager)
+    service.load("fcfs")
+    while service.step():
+        pass
+    page = ProcessPage(manager, service)
+    page.table.selectRow(0)
+    opened = []
+    monkeypatch.setattr(MessageDialog, "confirm_danger", lambda *args: True)
+    monkeypatch.setattr(
+        CreateProcessDialog,
+        "exec",
+        lambda dialog: opened.append(dialog.process),
+    )
+
+    page.edit_selected()
+
+    assert opened == [process]
+    assert service.scheduler is None
+    assert process.state is ProcessState.READY
+    assert process.remaining_time == process.burst_time
+    assert process.finish_time is None
+    assert process.resources_allocated

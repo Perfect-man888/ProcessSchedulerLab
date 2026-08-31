@@ -81,16 +81,31 @@ def test_edf_and_rms_are_skipped_when_realtime_fields_missing(qapp):
 
 
 def test_presets_are_deterministic_and_support_edf(qapp):
-    assert len(EXPERIMENT_PRESETS) == 6
+    assert len(EXPERIMENT_PRESETS) == 7
     for preset in EXPERIMENT_PRESETS:
         first = preset.instantiate()
         second = preset.instantiate()
         assert first == second
         assert all(process.deadline is not None for process in first)
         report = ExperimentService().run_all(first, dataset_name=preset.name)
-        # realtime 预设同时带 period，可运行 RMS；其它预设仅支持 EDF
-        expected = 8 if preset.key == "realtime" else 7
+        # 两个实时预设同时带 period，可运行 RMS；其它预设仅支持 EDF
+        expected = 8 if preset.key in {"realtime", "rms_periodic"} else 7
         assert len(report.results) == expected
+
+
+def test_experiment_can_limit_algorithms_to_course_system_type(qapp):
+    source = [make_process("P001", 0, 2, deadline=5, period=4)]
+
+    report = ExperimentService().run_all(
+        source,
+        algorithm_keys=("edf", "rms"),
+    )
+
+    assert [result.algorithm_name for result in report.results] == ["EDF", "RMS"]
+    assert not report.skipped
+
+    with pytest.raises(ValueError, match="未知调度算法"):
+        ExperimentService().run_all(source, algorithm_keys=("unknown",))
 
 
 def test_experiment_report_best_supports_ties(qapp):

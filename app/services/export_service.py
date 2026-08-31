@@ -112,8 +112,10 @@ class ExportService:
                     "CPU Utilization",
                     "Throughput",
                     "Context Switches",
+                    "Makespan",
                     "Deadline Miss Count",
                     "Deadline Miss Rate",
+                    "Deadline Satisfaction Rate",
                 ]
             )
             for result in report.results:
@@ -127,8 +129,10 @@ class ExportService:
                         f"{result.cpu_utilization:.6f}",
                         f"{result.throughput:.6f}",
                         result.context_switches,
+                        result.makespan,
                         result.deadline_miss_count,
                         f"{result.deadline_miss_rate:.6f}",
+                        f"{result.deadline_satisfaction_rate:.6f}",
                     ]
                 )
 
@@ -313,7 +317,8 @@ class ExportService:
         summary_data = [[
             text("算法"), text("平均等待"), text("平均周转"),
             text("带权周转"), text("平均响应"), text("CPU 利用率"),
-            text("吞吐率"), text("切换"), text("Miss"),
+            text("吞吐率"), text("切换"), text("Makespan"), text("Miss"),
+            text("满足率"),
         ]]
         for result in report.results:
             summary_data.append([
@@ -323,12 +328,21 @@ class ExportService:
                 text(f"{result.average_response_time:.2f}"),
                 text(f"{result.cpu_utilization * 100:.1f}%"),
                 text(f"{result.throughput:.3f}"), text(result.context_switches),
-                text(result.deadline_miss_count if result.algorithm_name == "EDF" else "-")
+                text(result.makespan),
+                text(result.deadline_miss_count if result.algorithm_name in {"EDF", "RMS"} else "-"),
+                text(
+                    f"{result.deadline_satisfaction_rate * 100:.1f}%"
+                    if result.algorithm_name in {"EDF", "RMS"}
+                    else "-"
+                ),
             ])
         summary_table = Table(
             summary_data,
             repeatRows=1,
-            colWidths=[34 * mm, 25 * mm, 25 * mm, 25 * mm, 25 * mm, 25 * mm, 22 * mm, 18 * mm, 16 * mm],
+            colWidths=[
+                30 * mm, 22 * mm, 22 * mm, 22 * mm, 22 * mm, 22 * mm,
+                20 * mm, 16 * mm, 20 * mm, 14 * mm, 20 * mm,
+            ],
         )
         summary_table.setStyle(table_style)
         story.extend([summary_table, Paragraph("二、自动分析结论", heading_style)])

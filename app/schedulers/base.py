@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
 
@@ -16,6 +17,18 @@ class PreemptionReason(str, Enum):
     POLICY = "POLICY"
     TIME_SLICE = "TIME_SLICE"
     HIGHER_QUEUE = "HIGHER_QUEUE"
+
+
+class SchedulerNoticeType(str, Enum):
+    AGING = "AGING"
+    BOOST = "BOOST"
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerNotice:
+    notice_type: SchedulerNoticeType
+    detail: str
+    pid: str | None = None
 
 
 class BaseScheduler(ABC):
@@ -78,6 +91,16 @@ class BaseScheduler(ABC):
 
     def on_tick(self, process: Process, now: int) -> None:
         """进程完成一个 Tick 后的策略回调。"""
+
+    def on_clock(
+        self,
+        ready: Iterable[Process],
+        current: Process | None,
+        now: int,
+    ) -> tuple[SchedulerNotice, ...]:
+        """时钟边界策略通知；用于记录 Aging、Boost 等可解释事件。"""
+
+        return ()
 
     def on_dispatch(self, process: Process, now: int) -> None:
         """进程获得 CPU 时的策略回调。"""

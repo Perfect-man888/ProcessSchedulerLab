@@ -7,7 +7,12 @@ from app.models.schedule_result import ProcessMetrics, ScheduleResult
 from app.models.schedule_segment import ScheduleSegment, append_segment
 from app.models.simulation_event import SimulationEvent, SimulationEventType
 from app.models.simulation_state import SimulationState, SimulationStatus
-from app.schedulers import BaseScheduler, PreemptionReason, create_scheduler
+from app.schedulers import (
+    BaseScheduler,
+    PreemptionReason,
+    SchedulerNoticeType,
+    create_scheduler,
+)
 from app.services.process_manager import ProcessManager
 
 
@@ -220,6 +225,7 @@ class SimulationService(QObject):
     def _advance_one_tick(self) -> bool:
         self._admit_arrivals()
         self._handle_io_completion()
+        self._publish_scheduler_notices()
 
         if self.state.switch_remaining > 0:
             self._run_switch_tick()
@@ -286,6 +292,23 @@ class SimulationService(QObject):
         )
         if reason is not None:
             self._preempt_current(reason)
+
+    def _publish_scheduler_notices(self) -> None:
+        notices = self._scheduler.on_clock(
+            self.state.ready_queue,
+            self.state.current_process,
+            self.state.clock,
+        )
+        event_types = {
+            SchedulerNoticeType.AGING: SimulationEventType.AGING,
+            SchedulerNoticeType.BOOST: SimulationEventType.BOOST,
+        }
+        for notice in notices:
+            self._emit_event(
+                event_types[notice.notice_type],
+                notice.pid,
+                notice.detail,
+            )
 
     def _preempt_current(self, reason: PreemptionReason) -> None:
         process = self.state.current_process
@@ -466,6 +489,12 @@ class SimulationService(QObject):
             process.pid,
             f"完成于 T={self.state.clock}，资源已释放",
         )
+        if process.deadline is not None and process.finish_time > process.deadline:
+            self._emit_event(
+                SimulationEventType.DEADLINE_MISS,
+                process.pid,
+                f"完成时刻 T={process.finish_time} 超过 Deadline={process.deadline}",
+            )
 
     def _advance_clock(self) -> None:
         for process in self.state.ready_queue:

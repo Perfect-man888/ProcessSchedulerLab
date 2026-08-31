@@ -116,6 +116,12 @@ class ScheduleResult:
         return self.segments[-1].end if self.segments else 0
 
     @property
+    def makespan(self) -> int:
+        """从 T=0 到全部任务完成的总调度长度。"""
+
+        return self.total_elapsed_ticks
+
+    @property
     def context_switch_ticks(self) -> int:
         return sum(segment.duration for segment in self.segments if segment.is_context_switch)
 
@@ -157,6 +163,22 @@ class ScheduleResult:
         if not realtime:
             return 0.0
         return sum(m.deadline_missed for m in realtime) / len(realtime)
+
+    @property
+    def deadline_task_count(self) -> int:
+        return sum(metrics.deadline is not None for metrics in self.process_metrics)
+
+    @property
+    def deadline_satisfaction_rate(self) -> float:
+        if self.deadline_task_count == 0:
+            return 0.0
+        return 1.0 - self.deadline_miss_rate
+
+    @property
+    def maximum_waiting_time(self) -> int:
+        if not self.process_metrics:
+            return 0
+        return max(metrics.waiting_time for metrics in self.process_metrics)
 
     @property
     def average_waiting_time(self) -> float:

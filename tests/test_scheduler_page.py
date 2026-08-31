@@ -51,11 +51,14 @@ def test_scheduler_page_initial_state_and_algorithm_parameter_pages(qapp):
 
     page.algorithm_combo.setCurrentIndex(3)
     assert page.parameter_stack.currentIndex() == 1
-    page.algorithm_combo.setCurrentIndex(4)
+    page.system_type_combo.setCurrentIndex(1)
+    assert page.algorithm_combo.currentText() == "Round Robin · 时间片轮转"
     assert page.parameter_stack.currentIndex() == 2
-    page.algorithm_combo.setCurrentIndex(6)
+    page.system_type_combo.setCurrentIndex(2)
+    page.algorithm_combo.setCurrentIndex(1)
     assert page.parameter_stack.currentIndex() == 0
-    page.algorithm_combo.setCurrentIndex(7)
+    page.system_type_combo.setCurrentIndex(1)
+    page.algorithm_combo.setCurrentIndex(1)
     assert page.parameter_stack.currentIndex() == 3
 
     add_process(manager)
@@ -63,11 +66,44 @@ def test_scheduler_page_initial_state_and_algorithm_parameter_pages(qapp):
     assert service.scheduler is None
 
 
+def test_system_type_switch_updates_algorithms_and_preserves_pcbs(qapp):
+    manager, service, page = make_page()
+    process = add_process(manager, period=6, deadline=8)
+    before = (process.pid, process.burst_time, process.priority, process.period)
+
+    assert page.system_type_combo.currentText() == "批处理系统"
+    assert "FCFS" in page.algorithm_combo.currentText()
+    page.system_type_combo.setCurrentIndex(1)
+    assert page.algorithm_combo.currentText() == "Round Robin · 时间片轮转"
+    assert "平均响应" in page.system_profile_metrics.text()
+    page.system_type_combo.setCurrentIndex(2)
+    assert page.algorithm_combo.currentText() == "EDF · 最早截止时间优先"
+    assert "Deadline" in page.neutral_parameter_hint.text()
+    assert before == (process.pid, process.burst_time, process.priority, process.period)
+
+
+def test_system_type_change_requires_matching_algorithm_to_be_applied(qapp):
+    manager, service, page = make_page()
+    add_process(manager, burst=3)
+    assert page.load_experiment()
+    assert page.start_button.isEnabled()
+
+    page.system_type_combo.setCurrentIndex(1)
+
+    assert not page.start_button.isEnabled()
+    assert not page.step_button.isEnabled()
+    assert "待应用" in page.loaded_algorithm_label.text()
+    assert page.load_experiment()
+    assert isinstance(service.scheduler, RoundRobinScheduler)
+    assert page.start_button.isEnabled()
+
+
 def test_round_robin_controls_drive_service_and_live_views(qapp):
     manager, service, page = make_page()
     add_process(manager, "Alpha", burst=3)
     add_process(manager, "Beta", burst=2)
-    page.algorithm_combo.setCurrentIndex(4)
+    page.system_type_combo.setCurrentIndex(1)
+    page.algorithm_combo.setCurrentIndex(0)
     page.quantum_input.setValue(1)
 
     assert page.load_experiment()
@@ -125,7 +161,8 @@ def test_start_pause_and_reset_button_state_machine(qapp):
 def test_edf_validation_error_is_presented_without_partial_load(qapp, monkeypatch):
     manager, service, page = make_page()
     add_process(manager, deadline=None)
-    page.algorithm_combo.setCurrentIndex(5)
+    page.system_type_combo.setCurrentIndex(2)
+    page.algorithm_combo.setCurrentIndex(0)
     errors = []
     monkeypatch.setattr(
         MessageDialog,
@@ -141,7 +178,8 @@ def test_edf_validation_error_is_presented_without_partial_load(qapp, monkeypatc
 def test_mlfq_configuration_is_forwarded_to_scheduler(qapp):
     manager, service, page = make_page()
     add_process(manager)
-    page.algorithm_combo.setCurrentIndex(7)
+    page.system_type_combo.setCurrentIndex(1)
+    page.algorithm_combo.setCurrentIndex(1)
     for control, value in zip(page.mlfq_inputs, (2, 4, 8)):
         control.setValue(value)
     page.boost_input.setValue(16)
@@ -168,7 +206,8 @@ def test_mlfq_ready_processes_are_split_into_three_visible_queues(qapp):
     manager, service, page = make_page()
     first = add_process(manager, "Alpha", burst=5)
     add_process(manager, "Beta", burst=5)
-    page.algorithm_combo.setCurrentIndex(7)
+    page.system_type_combo.setCurrentIndex(1)
+    page.algorithm_combo.setCurrentIndex(1)
 
     assert page.load_experiment()
     assert page.mlfq_queue_widget.isVisibleTo(page)
@@ -201,7 +240,8 @@ def test_rms_queue_is_visualized_in_period_order(qapp):
     manager, service, page = make_page()
     add_process(manager, "Slow", period=20)
     add_process(manager, "Fast", period=5)
-    page.algorithm_combo.setCurrentIndex(6)
+    page.system_type_combo.setCurrentIndex(2)
+    page.algorithm_combo.setCurrentIndex(1)
 
     assert page.load_experiment()
     assert "Period" in page.queue_rule_label.text()

@@ -90,51 +90,18 @@ class ProcessManager(QObject):
         io_duration: int | None = None,
     ) -> Process:
 
-        name = name.strip()
-
-        if not name:
-            raise ValueError("进程名称不能为空。")
-
-        if arrival_time < 0:
-            raise ValueError("到达时间不能小于 0。")
-
-        if burst_time <= 0:
-            raise ValueError("服务时间必须大于 0。")
-
-        if priority <= 0:
-            raise ValueError("优先级必须大于 0。")
-
-        if memory_mb <= 0:
-            raise ValueError(
-                "内存需求必须大于 0 MB。"
-            )
-
-        if io_devices < 0:
-            raise ValueError(
-                "I/O 设备数量不能小于 0。"
-            )
-
-        if (
-            deadline is not None
-            and deadline <= arrival_time
-        ):
-            raise ValueError(
-                "Deadline 必须大于到达时间。"
-            )
-
-        if period is not None and period <= 0:
-            raise ValueError(
-                "Period 必须大于 0。"
-            )
-
-        if io_interval is not None and io_interval <= 0:
-            raise ValueError("I/O 请求间隔必须大于 0。")
-
-        if io_duration is not None and io_duration <= 0:
-            raise ValueError("I/O 持续时间必须大于 0。")
-
-        if (io_interval is None) != (io_duration is None):
-            raise ValueError("io_interval 与 io_duration 必须同时提供或同时为空。")
+        name = self._validate_definition(
+            name=name,
+            arrival_time=arrival_time,
+            burst_time=burst_time,
+            priority=priority,
+            memory_mb=memory_mb,
+            io_devices=io_devices,
+            deadline=deadline,
+            period=period,
+            io_interval=io_interval,
+            io_duration=io_duration,
+        )
 
         automatic_pid = pid is None
         if automatic_pid:
@@ -196,6 +163,98 @@ class ProcessManager(QObject):
         self.changed.emit()
 
         return process
+
+    def update_process(
+        self,
+        pid: str,
+        *,
+        name: str,
+        arrival_time: int,
+        burst_time: int,
+        priority: int,
+        memory_mb: int,
+        io_devices: int,
+        deadline: int | None = None,
+        period: int | None = None,
+        io_interval: int | None = None,
+        io_duration: int | None = None,
+    ) -> Process:
+        """原子更新 PCB 配置；PID 与创建时间保持不变。"""
+
+        process = self._require_process(pid)
+        name = self._validate_definition(
+            name=name,
+            arrival_time=arrival_time,
+            burst_time=burst_time,
+            priority=priority,
+            memory_mb=memory_mb,
+            io_devices=io_devices,
+            deadline=deadline,
+            period=period,
+            io_interval=io_interval,
+            io_duration=io_duration,
+        )
+
+        required_memory = sum(
+            memory_mb if item.pid == pid else item.memory_mb
+            for item in self._processes.values()
+        )
+        required_io = sum(
+            io_devices if item.pid == pid else item.io_devices
+            for item in self._processes.values()
+        )
+        resource = self.resource_manager.resource
+        if required_memory > resource.total_memory_mb:
+            raise ValueError("修改后的全部 PCB 内存需求超过系统总内存。")
+        if required_io > resource.total_io_devices:
+            raise ValueError("修改后的全部 PCB I/O 设备需求超过系统总量。")
+
+        old_memory = process.memory_mb if process.resources_allocated else 0
+        old_io = process.io_devices if process.resources_allocated else 0
+        new_memory = memory_mb if process.resources_allocated else 0
+        new_io = io_devices if process.resources_allocated else 0
+        projected_memory = resource.used_memory_mb - old_memory + new_memory
+        projected_io = resource.used_io_devices - old_io + new_io
+        if projected_memory > resource.total_memory_mb:
+            raise ValueError("系统可用内存不足，无法保存修改。")
+        if projected_io > resource.total_io_devices:
+            raise ValueError("系统可用 I/O 设备不足，无法保存修改。")
+
+        process.name = name
+        process.arrival_time = arrival_time
+        process.burst_time = burst_time
+        process.priority = priority
+        process.memory_mb = memory_mb
+        process.io_devices = io_devices
+        process.deadline = deadline
+        process.period = period
+        process.io_interval = io_interval
+        process.io_duration = io_duration
+        self._reset_process_runtime(process)
+        resource.used_memory_mb = projected_memory
+        resource.used_io_devices = projected_io
+        self._emit_activity("EDIT", pid, f"更新进程配置 {name}")
+        self.resource_manager.changed.emit()
+        self.changed.emit()
+        return process
+
+    def reset_for_configuration(self) -> None:
+        """清除全部运行结果并恢复配置态，供编辑 PCB 前保持状态一致。"""
+
+        resource = self.resource_manager.resource
+        memory = sum(process.memory_mb for process in self._processes.values())
+        io_devices = sum(process.io_devices for process in self._processes.values())
+        if memory > resource.total_memory_mb or io_devices > resource.total_io_devices:
+            raise ValueError("当前 PCB 的资源需求超过系统容量，无法重置。")
+        self.simulation_time = 0
+        for process in self._processes.values():
+            process.resources_allocated = True
+            self._reset_process_runtime(process)
+        resource.used_memory_mb = memory
+        resource.used_io_devices = io_devices
+        self._emit_activity("RESET", "—", "编辑前清除调度进度")
+        self.resource_manager.changed.emit()
+        self.changed.emit()
 
     # =========================================================
     # 挂起
@@ -375,6 +434,62 @@ class ProcessManager(QObject):
             )
 
         return process
+
+    @staticmethod
+    def _validate_definition(
+        *,
+        name: str,
+        arrival_time: int,
+        burst_time: int,
+        priority: int,
+        memory_mb: int,
+        io_devices: int,
+        deadline: int | None,
+        period: int | None,
+        io_interval: int | None,
+        io_duration: int | None,
+    ) -> str:
+        name = name.strip()
+        if not name:
+            raise ValueError("进程名称不能为空。")
+        if arrival_time < 0:
+            raise ValueError("到达时间不能小于 0。")
+        if burst_time <= 0:
+            raise ValueError("服务时间必须大于 0。")
+        if priority <= 0:
+            raise ValueError("优先级必须大于 0。")
+        if memory_mb <= 0:
+            raise ValueError("内存需求必须大于 0 MB。")
+        if io_devices < 0:
+            raise ValueError("I/O 设备数量不能小于 0。")
+        if deadline is not None and deadline <= arrival_time:
+            raise ValueError("Deadline 必须大于到达时间。")
+        if period is not None and period <= 0:
+            raise ValueError("Period 必须大于 0。")
+        if io_interval is not None and io_interval <= 0:
+            raise ValueError("I/O 请求间隔必须大于 0。")
+        if io_duration is not None and io_duration <= 0:
+            raise ValueError("I/O 持续时间必须大于 0。")
+        if (io_interval is None) != (io_duration is None):
+            raise ValueError("io_interval 与 io_duration 必须同时提供或同时为空。")
+        return name
+
+    def _reset_process_runtime(self, process: Process) -> None:
+        process.remaining_time = process.burst_time
+        process.io_remaining = 0
+        process.io_ticks_run = 0
+        process.ready_waiting_ticks = 0
+        process.start_time = None
+        process.finish_time = None
+        process.waiting_time = None
+        process.turnaround_time = None
+        process.weighted_turnaround_time = None
+        process.response_time = None
+        process.state = (
+            ProcessState.READY
+            if process.arrival_time <= self.simulation_time
+            else ProcessState.NEW
+        )
 
     def _emit_activity(
         self,

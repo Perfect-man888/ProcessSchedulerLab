@@ -4,6 +4,7 @@ from typing import Iterable
 
 from PySide6.QtCore import QObject, Signal
 
+from app.data.scheduling_profiles import ALL_ALGORITHM_KEYS
 from app.models.experiment_result import AlgorithmSkip, ExperimentReport
 from app.models.process import Process
 from app.models.schedule_result import ScheduleResult
@@ -124,6 +125,17 @@ EXPERIMENT_PRESETS = (
             ProcessTemplate("Notification", 5, 1, 1, 10),
         ),
     ),
+    ExperimentPreset(
+        "rms_periodic",
+        "RMS 周期实时负载",
+        "不同 Period 的周期任务单次作业样本，用于比较 RMS 固定优先级与 EDF 动态优先级。",
+        (
+            ProcessTemplate("Fast-Sensor", 0, 1, 1, 4, 4),
+            ProcessTemplate("Control-Loop", 0, 2, 2, 6, 5),
+            ProcessTemplate("Telemetry", 1, 3, 3, 12, 10),
+            ProcessTemplate("Logger", 2, 2, 4, 11, 8),
+        ),
+    ),
 )
 
 
@@ -137,7 +149,7 @@ class ExperimentService(QObject):
     progress = Signal(int, str)
     completed = Signal(object)
 
-    DEFAULT_ALGORITHMS = tuple(SCHEDULER_FACTORIES)
+    DEFAULT_ALGORITHMS = ALL_ALGORITHM_KEYS
     DISPLAY_NAMES = {
         "fcfs": "FCFS",
         "sjf": "SJF",
@@ -159,6 +171,7 @@ class ExperimentService(QObject):
         priority_aging_interval: int | None = None,
         mlfq_quanta: tuple[int, ...] = (1, 2, 4),
         mlfq_boost_interval: int = 10,
+        algorithm_keys: Iterable[str] | None = None,
         should_cancel: Callable[[], bool] | None = None,
     ) -> ExperimentReport:
         source = tuple(processes)
@@ -167,10 +180,23 @@ class ExperimentService(QObject):
         if rr_quantum <= 0:
             raise ValueError("Round Robin 时间片必须大于 0。")
 
+        selected_algorithms = (
+            tuple(algorithm_keys)
+            if algorithm_keys is not None
+            else self.DEFAULT_ALGORITHMS
+        )
+        if not selected_algorithms:
+            raise ValueError("至少选择一种调度算法。")
+        if len(selected_algorithms) != len(set(selected_algorithms)):
+            raise ValueError("调度算法列表不能包含重复项。")
+        unknown = [key for key in selected_algorithms if key not in SCHEDULER_FACTORIES]
+        if unknown:
+            raise ValueError(f"未知调度算法：{', '.join(unknown)}。")
+
         results = []
         skipped = []
-        total = len(self.DEFAULT_ALGORITHMS)
-        for index, key in enumerate(self.DEFAULT_ALGORITHMS, start=1):
+        total = len(selected_algorithms)
+        for index, key in enumerate(selected_algorithms, start=1):
             if should_cancel is not None and should_cancel():
                 raise ExperimentCancelled("实验已取消。")
             display_name = self.DISPLAY_NAMES[key]
@@ -221,6 +247,7 @@ class ExperimentService(QObject):
                 ("Priority Aging", f"{priority_aging_interval} Tick" if priority_aging_interval else "Off"),
                 ("MLFQ Quanta", "/".join(str(value) for value in mlfq_quanta)),
                 ("MLFQ Boost", f"{mlfq_boost_interval} Tick"),
+                ("Algorithm Scope", "/".join(selected_algorithms)),
             ),
         )
         self.progress.emit(100, "完成")

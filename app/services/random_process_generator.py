@@ -23,6 +23,9 @@ class RandomConfig:
     priority_min: int = 1
     priority_max: int = 8
     include_realtime: bool = False
+    include_io: bool = False
+    io_interval: int = 2
+    io_duration: int = 2
     deadline_factor: float = 3.0
     period_factor: float = 4.0
 
@@ -43,6 +46,10 @@ class RandomConfig:
             raise ValueError("Deadline 倍率必须不小于 1。")
         if self.period_factor < self.deadline_factor:
             raise ValueError("Period 倍率不能小于 Deadline 倍率。")
+        if self.io_interval <= 0:
+            raise ValueError("I/O 请求间隔必须大于 0。")
+        if self.io_duration <= 0:
+            raise ValueError("I/O 持续时间必须大于 0。")
 
 
 class RandomProcessGenerator:
@@ -79,6 +86,8 @@ class RandomProcessGenerator:
                     period=period,
                     memory_mb=self._rng.choice((64, 128, 256)),
                     io_devices=0,
+                    io_interval=config.io_interval if config.include_io else None,
+                    io_duration=config.io_duration if config.include_io else None,
                 )
             )
         return tuple(processes)

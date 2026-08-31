@@ -12,6 +12,9 @@ class SimulationEventType(str, Enum):
     ACTIVATE = "ACTIVATE"
     REVOKE = "REVOKE"
     FINISH = "FINISH"
+    DEADLINE_MISS = "DEADLINE_MISS"
+    AGING = "AGING"
+    BOOST = "BOOST"
     CONTEXT_SWITCH = "CONTEXT_SWITCH"
     IO_REQUEST = "IO_REQUEST"
     IO_COMPLETE = "IO_COMPLETE"
@@ -32,6 +35,9 @@ class SimulationEventType(str, Enum):
             SimulationEventType.ACTIVATE: "激活",
             SimulationEventType.REVOKE: "撤销",
             SimulationEventType.FINISH: "完成",
+            SimulationEventType.DEADLINE_MISS: "截止期违约",
+            SimulationEventType.AGING: "优先级老化",
+            SimulationEventType.BOOST: "队列提升",
             SimulationEventType.CONTEXT_SWITCH: "上下文切换",
             SimulationEventType.IO_REQUEST: "I/O 请求",
             SimulationEventType.IO_COMPLETE: "I/O 完成",

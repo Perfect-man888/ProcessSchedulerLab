@@ -30,6 +30,14 @@ class FilterCombo(QToolButton):
         if self._current_index < 0 and self._items:
             self.setCurrentIndex(0, emit_signal=False)
 
+    def clear(self) -> None:
+        """清空全部选项，供依赖其他筛选器的动态列表复用。"""
+
+        self._menu.clear()
+        self._items.clear()
+        self._current_index = -1
+        self.setText("")
+
     def setCurrentIndex(self, index: int, emit_signal: bool = True):
         if not 0 <= index < len(self._items):
             return

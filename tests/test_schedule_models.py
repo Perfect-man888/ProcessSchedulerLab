@@ -226,6 +226,10 @@ def test_schedule_result_counts_idle_and_deadline_misses():
     assert result.deadline_missed_processes == ("P001",)
     assert result.deadline_miss_count == 1
     assert result.deadline_miss_rate == 0.5
+    assert result.deadline_task_count == 2
+    assert result.deadline_satisfaction_rate == 0.5
+    assert result.makespan == 7
+    assert result.maximum_waiting_time == 0
 
 
 @pytest.mark.parametrize(
