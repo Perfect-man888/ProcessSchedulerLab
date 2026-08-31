@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+.tmp_delivery/
+.idea/
+.vscode/
+build/
+dist/
+tmp/
+*.spec
+*.log
+.DS_Store
+Thumbs.db
+
+# Runtime exports are generated artifacts; keep only deliberate samples.
+output/csv/
+output/png/

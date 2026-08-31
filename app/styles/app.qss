@@ -1,0 +1,1199 @@
+/* ============================================================
+   ProcessSchedulerLab
+   Global Design System
+   ============================================================ */
+
+* {
+    font-family: "Microsoft YaHei UI", "Segoe UI";
+}
+
+QMainWindow,
+QWidget#MainRoot {
+    background-color: #F6F8FC;
+    color: #172033;
+}
+
+QWidget#PageContainer {
+    background-color: #F6F8FC;
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+
+QFrame#Sidebar {
+    background-color: #111827;
+    border: none;
+}
+
+QLabel#BrandMark {
+    background-color: #4F6EF7;
+    color: white;
+    border-radius: 13px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QLabel#BrandName {
+    color: #FFFFFF;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QLabel#BrandSubtitle {
+    color: #8994A7;
+    font-size: 10px;
+}
+
+QLabel#SidebarSection {
+    color: #667085;
+    font-size: 10px;
+    font-weight: 700;
+    padding-left: 10px;
+    padding-bottom: 6px;
+}
+
+QPushButton#NavButton {
+    min-height: 46px;
+    padding-left: 17px;
+    padding-right: 12px;
+
+    border: none;
+    border-radius: 11px;
+
+    background-color: transparent;
+
+    color: #9CA8BA;
+    text-align: left;
+
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QPushButton#NavButton:hover {
+    background-color: #182236;
+    color: #FFFFFF;
+}
+
+QPushButton#NavButton:checked {
+    background-color: #4F6EF7;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+QFrame#SidebarDivider {
+    background-color: #263043;
+    border: none;
+    max-height: 1px;
+}
+
+QLabel#CourseLabel {
+    color: #697386;
+    font-size: 9px;
+    font-weight: 600;
+    padding-top: 8px;
+}
+
+QLabel#VersionLabel {
+    color: #8B96A8;
+    font-size: 10px;
+    padding-top: 3px;
+}
+
+
+/* ============================================================
+   Page Header
+   ============================================================ */
+
+QLabel#PageTitle {
+    color: #172033;
+    font-size: 27px;
+    font-weight: 700;
+}
+
+QLabel#PageSubtitle {
+    color: #667085;
+    font-size: 12px;
+}
+
+QLabel#ReadyPill {
+    background-color: #EAF8F1;
+    color: #16855A;
+    border: 1px solid #CDEEDD;
+    border-radius: 18px;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QLabel#ReadyPill[state="running"] {
+    background-color: #EAF8F1;
+    color: #16855A;
+    border-color: #BEE8D2;
+}
+
+QLabel#ReadyPill[state="paused"] {
+    background-color: #FFF7E8;
+    color: #B76E00;
+    border-color: #F9DCA7;
+}
+
+QLabel#ReadyPill[state="finished"] {
+    background-color: #EEF1FF;
+    color: #4F6EF7;
+    border-color: #DCE2FF;
+}
+
+QLabel#StagePill {
+    background-color: #EEF1FF;
+    color: #4F6EF7;
+    border: 1px solid #DCE2FF;
+    border-radius: 18px;
+
+    font-size: 10px;
+    font-weight: 700;
+}
+
+
+/* ============================================================
+   Cards & Panels
+   ============================================================ */
+
+QFrame#StatCard,
+QFrame#Panel,
+QFrame#PlaceholderHero,
+QFrame#MiniFeatureCard {
+    background-color: #FFFFFF;
+
+    border: 1px solid #E7ECF3;
+    border-radius: 16px;
+}
+
+QFrame#StatCard:hover,
+QFrame#MiniFeatureCard:hover {
+    border: 1px solid #D6DEEB;
+}
+
+QLabel#StatCardTitle {
+    color: #667085;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#StatCardValue {
+    color: #172033;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+QLabel#StatCardSubtitle {
+    color: #98A2B3;
+    font-size: 10px;
+}
+
+
+/* ============================================================
+   Panel Headings
+   ============================================================ */
+
+QLabel#PanelTitle {
+    color: #172033;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QLabel#PanelSubtitle {
+    color: #98A2B3;
+    font-size: 10px;
+}
+
+QLabel#SectionTitle {
+    color: #172033;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+
+/* ============================================================
+   Resource Bars
+   ============================================================ */
+
+QFrame#ResourceBar {
+    background-color: transparent;
+    border: none;
+}
+
+QLabel#ResourceTitle {
+    color: #344054;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QLabel#ResourceValue {
+    color: #667085;
+    font-size: 10px;
+}
+
+QProgressBar {
+    background-color: #EEF1F6;
+    border: none;
+    border-radius: 4px;
+}
+
+
+/* ============================================================
+   Process Distribution
+   ============================================================ */
+
+QLabel#StateName {
+    color: #344054;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QLabel#StateDescription {
+    color: #98A2B3;
+    font-size: 9px;
+}
+
+QLabel#StateCount {
+    color: #172033;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+
+/* ============================================================
+   CPU Timeline
+   ============================================================ */
+
+QLabel#TimelineTime {
+    background-color: #F2F4F8;
+    color: #475467;
+    border-radius: 9px;
+
+    padding: 7px 12px;
+
+    font-size: 10px;
+    font-weight: 600;
+}
+
+QFrame#TimelineTrack {
+    background-color: #F8F9FC;
+
+    border: 1px solid #EBEFF5;
+    border-radius: 12px;
+}
+
+QLabel#TimelineIdle {
+    background-color: #EEF1F6;
+
+    border: 1px dashed #D4DAE5;
+    border-radius: 8px;
+
+    color: #98A2B3;
+
+    font-size: 10px;
+    font-weight: 600;
+}
+
+
+/* ============================================================
+   Activity Table
+   ============================================================ */
+
+QTableWidget#ActivityTable {
+    background-color: transparent;
+
+    border: none;
+
+    color: #475467;
+
+    font-size: 10px;
+
+    outline: none;
+
+    gridline-color: transparent;
+}
+
+QTableWidget#ActivityTable::item {
+    border-bottom: 1px solid #EEF1F5;
+
+    padding: 8px;
+}
+
+QHeaderView::section {
+    background-color: #F8F9FC;
+
+    color: #667085;
+
+    border: none;
+    border-bottom: 1px solid #E7ECF3;
+
+    padding: 9px 8px;
+
+    font-size: 9px;
+    font-weight: 700;
+}
+
+
+/* ============================================================
+   Environment information
+   ============================================================ */
+
+QLabel#InfoKey {
+    color: #667085;
+    font-size: 10px;
+}
+
+QLabel#InfoValue {
+    color: #344054;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+
+/* ============================================================
+   Placeholder Pages
+   ============================================================ */
+
+QLabel#PlaceholderIcon {
+    color: #4F6EF7;
+
+    font-size: 34px;
+    font-weight: 700;
+}
+
+QLabel#PlaceholderTitle {
+    color: #172033;
+
+    font-size: 21px;
+    font-weight: 700;
+}
+
+QLabel#PlaceholderText {
+    color: #667085;
+
+    font-size: 11px;
+}
+
+QFrame#MiniFeatureCard {
+    min-height: 115px;
+}
+
+QLabel#FeatureNumber {
+    color: #4F6EF7;
+
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QLabel#FeatureName {
+    color: #344054;
+
+    font-size: 12px;
+    font-weight: 600;
+}
+
+
+/* ============================================================
+   Scroll Area
+   ============================================================ */
+
+QScrollArea {
+    border: none;
+    background-color: transparent;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: #F6F8FC;
+}
+
+QScrollBar:vertical {
+    background-color: transparent;
+
+    width: 9px;
+
+    margin: 4px 2px 4px 2px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #CBD2DD;
+
+    min-height: 36px;
+
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #ADB7C6;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+/* ============================================================
+   Process Management
+   ============================================================ */
+
+QPushButton#PrimaryButton {
+    min-height: 40px;
+
+    padding-left: 18px;
+    padding-right: 18px;
+
+    background-color: #4F6EF7;
+    color: #FFFFFF;
+
+    border: none;
+    border-radius: 10px;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #405DE6;
+}
+
+QPushButton#PrimaryButton:pressed {
+    background-color: #354ED0;
+}
+
+
+QPushButton#SecondaryButton {
+    min-height: 40px;
+
+    padding-left: 18px;
+    padding-right: 18px;
+
+    background-color: #F2F4F8;
+    color: #475467;
+
+    border: 1px solid #E1E6EE;
+    border-radius: 10px;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+
+QPushButton#WarningButton,
+QPushButton#SuccessButton,
+QPushButton#DangerButton {
+    min-height: 36px;
+
+    padding-left: 16px;
+    padding-right: 16px;
+
+    border-radius: 9px;
+
+    font-size: 10px;
+    font-weight: 600;
+}
+
+
+QPushButton#WarningButton {
+    background-color: #FFF7E8;
+    color: #C97900;
+
+    border: 1px solid #FBE5BC;
+}
+
+
+QPushButton#SuccessButton {
+    background-color: #EAF8F1;
+    color: #16855A;
+
+    border: 1px solid #CDEEDD;
+}
+
+
+QPushButton#DangerButton {
+    background-color: #FFF0F0;
+    color: #D93F46;
+
+    border: 1px solid #F6D2D4;
+}
+
+
+QPushButton:disabled {
+    color: #AAB2C0;
+    background-color: #F4F5F7;
+    border-color: #EAECF0;
+}
+
+
+QFrame#ProcessToolbar {
+    background-color: #FFFFFF;
+
+    border: 1px solid #E7ECF3;
+    border-radius: 13px;
+}
+
+
+QLineEdit#SearchInput {
+    min-height: 38px;
+
+    padding-left: 11px;
+    padding-right: 11px;
+
+    background-color: #FFFFFF;
+    color: #344054;
+
+    border: 1px solid #DDE3EC;
+    border-radius: 9px;
+
+    font-size: 10px;
+}
+
+
+QLineEdit#SearchInput:focus {
+    border: 1px solid #4F6EF7;
+}
+
+
+QToolButton#FilterCombo {
+    min-width: 125px;
+    min-height: 38px;
+    padding-left: 13px;
+    padding-right: 13px;
+    background-color: #FFFFFF;
+    color: #344054;
+    border: 1px solid #DDE3EC;
+    border-radius: 9px;
+    font-size: 10px;
+    text-align: left;
+}
+
+QLabel#TimelineSegment {
+    color: #FFFFFF;
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QToolButton#FilterCombo:hover,
+QToolButton#FilterCombo:pressed {
+    border-color: #4F6EF7;
+    background-color: #F8FAFF;
+}
+
+
+QTableWidget#ProcessTable {
+    background-color: #FFFFFF;
+
+    border: none;
+
+    color: #344054;
+
+    gridline-color: transparent;
+
+    outline: none;
+
+    font-size: 10px;
+}
+
+
+QTableWidget#ProcessTable::item {
+    min-height: 40px;
+
+    padding: 7px;
+
+    border-bottom: 1px solid #EEF1F5;
+}
+
+
+QTableWidget#ProcessTable::item:selected {
+    background-color: #EEF2FF;
+    color: #263D91;
+}
+
+
+QLabel#SelectedProcessLabel {
+    color: #667085;
+
+    font-size: 10px;
+}
+
+
+/* ============================================================
+   Create Process Dialog
+   ============================================================ */
+
+QDialog#CreateProcessDialog {
+    background-color: #F8F9FC;
+}
+
+QDialog#MessageDialog {
+    background-color: #FFFFFF;
+}
+
+QFrame#DialogSection {
+    background-color: #FFFFFF;
+    border: 1px solid #E7ECF3;
+    border-radius: 12px;
+}
+
+QLabel#DialogSectionTitle {
+    color: #344054;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QFrame#NumberInput {
+    min-height: 42px;
+    background-color: #FFFFFF;
+    border: 1px solid #D7DFEB;
+    border-radius: 10px;
+}
+
+QFrame#NumberInput:disabled {
+    background-color: #F3F5F8;
+    border-color: #E4E7EC;
+}
+
+QLineEdit#NumberInputEditor {
+    min-height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    font-size: 11px;
+}
+
+QLabel#NumberInputSuffix {
+    color: #98A2B3;
+    font-size: 9px;
+}
+
+QLabel#AvailableResourceLabel {
+    color: #52618A;
+    background-color: #EEF2FF;
+    border-radius: 8px;
+    padding: 9px 11px;
+    font-size: 9px;
+}
+
+QCheckBox#RealtimeToggle {
+    color: #344054;
+    spacing: 8px;
+    font-size: 10px;
+}
+
+QLabel#DialogMessageIcon {
+    color: #4F6EF7;
+    background-color: #EEF2FF;
+    border-radius: 19px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+QLabel#DialogMessageIcon[kind="warning"] {
+    color: #C97900;
+    background-color: #FFF7E8;
+}
+
+QLabel#DialogMessageIcon[kind="danger"] {
+    color: #D93F46;
+    background-color: #FFF0F0;
+}
+
+QLabel#DialogMessageTitle {
+    color: #172033;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QLabel#DialogMessageText {
+    color: #667085;
+    font-size: 10px;
+}
+
+
+QLabel#DialogTitle {
+    color: #172033;
+
+    font-size: 21px;
+    font-weight: 700;
+}
+
+
+QLabel#DialogSubtitle {
+    color: #667085;
+
+    font-size: 10px;
+}
+
+
+QLabel#DialogNote {
+    background-color: #EEF2FF;
+    color: #52618A;
+
+    border-radius: 9px;
+
+    padding: 11px;
+
+    font-size: 9px;
+}
+
+
+/* ============================================================
+   Scheduler Simulation
+   ============================================================ */
+
+QFrame#SchedulerPanel {
+    background-color: #FFFFFF;
+    border: 1px solid #E7ECF3;
+    border-radius: 14px;
+}
+
+QLabel#SimulationStatusPill {
+    min-width: 150px;
+    background-color: #F2F4F7;
+    color: #667085;
+    border: 1px solid #E4E7EC;
+    border-radius: 18px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#SimulationStatusPill[state="idle"] {
+    background-color: #EEF1FF;
+    color: #4F6EF7;
+    border-color: #DCE2FF;
+}
+
+QLabel#SimulationStatusPill[state="running"] {
+    background-color: #EAF8F1;
+    color: #16855A;
+    border-color: #BEE8D2;
+}
+
+QLabel#SimulationStatusPill[state="paused"] {
+    background-color: #FFF7E8;
+    color: #B76E00;
+    border-color: #F9DCA7;
+}
+
+QLabel#SimulationStatusPill[state="finished"] {
+    background-color: #EEF1FF;
+    color: #4F6EF7;
+    border-color: #DCE2FF;
+}
+
+QLabel#SchedulerProcessHint,
+QLabel#LoadedAlgorithmLabel {
+    color: #52618A;
+    background-color: #F2F4FF;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 9px;
+    font-weight: 600;
+}
+
+QLabel#SchedulerFieldLabel {
+    color: #667085;
+    font-size: 9px;
+    font-weight: 600;
+}
+
+QLabel#ParameterHint {
+    color: #98A2B3;
+    background-color: #F8F9FC;
+    border: 1px dashed #DDE3EC;
+    border-radius: 9px;
+    font-size: 9px;
+}
+
+QToolButton#SchedulerCombo {
+    min-height: 40px;
+    padding-left: 13px;
+    padding-right: 13px;
+    background-color: #FFFFFF;
+    color: #344054;
+    border: 1px solid #D7DFEB;
+    border-radius: 9px;
+    font-size: 10px;
+    text-align: left;
+}
+
+QToolButton#SchedulerCombo:hover,
+QToolButton#SchedulerCombo:pressed {
+    border-color: #4F6EF7;
+    background-color: #F8FAFF;
+}
+
+QPushButton#SuccessButton {
+    min-height: 38px;
+    padding-left: 17px;
+    padding-right: 17px;
+    background-color: #16A36A;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QPushButton#SuccessButton:hover {
+    background-color: #138C5B;
+}
+
+QPushButton#SuccessButton:disabled {
+    background-color: #D7EADF;
+    color: #8DB7A3;
+}
+
+QScrollArea#GanttScroll {
+    background-color: #F8F9FC;
+    border: 1px solid #EBEFF5;
+    border-radius: 12px;
+}
+
+QWidget#GanttChart {
+    background-color: #F8F9FC;
+}
+
+QLabel#QueueToken {
+    min-width: 72px;
+    min-height: 45px;
+    padding: 5px 8px;
+    color: #3F5AE0;
+    background-color: #EEF1FF;
+    border: 1px solid #DCE2FF;
+    border-radius: 9px;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+QLabel#QueueEmpty {
+    color: #98A2B3;
+    background-color: #F8F9FC;
+    border: 1px dashed #DDE3EC;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 9px;
+}
+
+QTableWidget#SimulationTable {
+    background-color: #FFFFFF;
+    color: #344054;
+    border: 1px solid #EEF1F5;
+    border-radius: 9px;
+    gridline-color: transparent;
+    outline: none;
+    font-size: 9px;
+}
+
+QTableWidget#SimulationTable::item {
+    padding: 6px;
+    border-bottom: 1px solid #F0F2F6;
+}
+
+QTableWidget#SimulationTable QHeaderView::section {
+    background-color: #F7F8FC;
+    color: #667085;
+    border: none;
+    border-bottom: 1px solid #E9EDF3;
+    padding: 8px 6px;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+
+/* ============================================================
+   Performance Analysis
+   ============================================================ */
+
+QFrame#AnalysisPanel {
+    background-color: #FFFFFF;
+    border: 1px solid #E7ECF3;
+    border-radius: 14px;
+}
+
+QLabel#AnalysisStatusPill {
+    background-color: #F2F4F7;
+    color: #667085;
+    border: 1px solid #E4E7EC;
+    border-radius: 18px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#AnalysisStatusPill[state="running"] {
+    background-color: #FFF7E8;
+    color: #B76E00;
+    border-color: #F9DCA7;
+}
+
+QLabel#AnalysisStatusPill[state="finished"] {
+    background-color: #EAF8F1;
+    color: #16855A;
+    border-color: #BEE8D2;
+}
+
+QLabel#AnalysisStatusPill[state="error"] {
+    background-color: #FFF0F0;
+    color: #D93F46;
+    border-color: #FFD4D6;
+}
+
+QToolButton#AnalysisCombo {
+    min-height: 40px;
+    padding-left: 13px;
+    padding-right: 13px;
+    background-color: #FFFFFF;
+    color: #344054;
+    border: 1px solid #D7DFEB;
+    border-radius: 9px;
+    font-size: 10px;
+    text-align: left;
+}
+
+QToolButton#AnalysisCombo:hover,
+QToolButton#AnalysisCombo:pressed {
+    border-color: #4F6EF7;
+    background-color: #F8FAFF;
+}
+
+QLabel#AnalysisSkipLabel {
+    color: #52618A;
+    background-color: #F2F4FF;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 9px;
+    font-weight: 600;
+}
+
+QLabel#ObservationItem {
+    color: #475467;
+    background-color: #F8F9FC;
+    border: 1px solid #EBEFF5;
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 10px;
+}
+
+
+/* ============================================================
+   Typical Operating System Analysis
+   ============================================================ */
+
+QFrame#SystemAnalysisPanel {
+    background-color: #FFFFFF;
+    border: 1px solid #E7ECF3;
+    border-radius: 14px;
+}
+
+QLabel#SystemSourcePill {
+    color: #2F4FD0;
+    background-color: #EEF2FF;
+    border: 1px solid #D7E0FF;
+    border-radius: 18px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QPushButton#SystemSelectorButton {
+    min-height: 58px;
+    padding: 8px 14px;
+    color: #475467;
+    background-color: #F8F9FC;
+    border: 1px solid #E5EAF1;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 650;
+    text-align: left;
+}
+
+QPushButton#SystemSelectorButton:hover {
+    border-color: #AAB9F9;
+    background-color: #F5F7FF;
+}
+
+QPushButton#SystemSelectorButton:checked {
+    color: #2F4FD0;
+    background-color: #EEF2FF;
+    border: 2px solid #4F6EF7;
+}
+
+QLabel#SystemProfileTitle {
+    color: #172033;
+    font-size: 18px;
+    font-weight: 750;
+}
+
+QLabel#MechanismChip {
+    color: #3B56C7;
+    background-color: #F0F3FF;
+    border: 1px solid #DDE4FF;
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 9px;
+    font-weight: 650;
+}
+
+QFrame#SystemFactCard {
+    background-color: #F8F9FC;
+    border: 1px solid #E9EDF3;
+    border-radius: 10px;
+}
+
+QFrame#SystemFactCard[accent="true"] {
+    background-color: #F0F3FF;
+    border-color: #D7E0FF;
+}
+
+QLabel#SystemFactLabel {
+    color: #4F6EF7;
+    font-size: 9px;
+    font-weight: 750;
+}
+
+QLabel#SystemFactBody {
+    color: #475467;
+    font-size: 10px;
+}
+
+QPushButton#SourceLinkButton {
+    min-height: 31px;
+    padding: 3px 10px;
+    color: #3656D8;
+    background-color: #FFFFFF;
+    border: 1px solid #D7E0FF;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 650;
+}
+
+QPushButton#SourceLinkButton:hover {
+    background-color: #EEF2FF;
+    border-color: #4F6EF7;
+}
+
+QTableWidget#SystemComparisonTable {
+    background-color: #FFFFFF;
+    border: 1px solid #E7ECF3;
+    border-radius: 10px;
+    color: #344054;
+    font-size: 9px;
+}
+
+QTableWidget#SystemComparisonTable::item {
+    border-bottom: 1px solid #EEF1F5;
+    padding: 7px;
+}
+
+QTableWidget#SystemComparisonTable QHeaderView::section {
+    color: #667085;
+    background-color: #F7F8FC;
+    border: none;
+    border-bottom: 1px solid #E4E9F0;
+    padding: 8px;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+QLabel#SystemConclusionTitle {
+    color: #4F6EF7;
+    font-size: 12px;
+    font-weight: 750;
+    padding-right: 16px;
+}
+
+QLabel#SystemConclusionText {
+    color: #475467;
+    font-size: 10px;
+}
+
+
+/* ============================================================
+   Settings and Help
+   ============================================================ */
+
+QFrame#SettingsPanel,
+QFrame#HelpPanel {
+    background-color: #FFFFFF;
+    border: 1px solid #E7ECF3;
+    border-radius: 14px;
+}
+
+QLabel#SettingsStatusPill,
+QLabel#HelpVersionPill {
+    color: #16855A;
+    background-color: #EAF8F1;
+    border: 1px solid #BEE8D2;
+    border-radius: 18px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#SettingsStatusPill[state="locked"] {
+    color: #B76E00;
+    background-color: #FFF7E8;
+    border-color: #F9DCA7;
+}
+
+QLabel#SettingsUsageCard {
+    color: #344054;
+    background-color: #F6F8FF;
+    border: 1px solid #DDE4FF;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+QLabel#SettingsFeedback {
+    color: #52618A;
+    font-size: 9px;
+    font-weight: 600;
+}
+
+QLabel#SettingsWarning {
+    color: #8A6100;
+    background-color: #FFF8E8;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 9px;
+}
+
+QFrame#HelpStepCard {
+    background-color: #F8F9FC;
+    border: 1px solid #E9EDF3;
+    border-radius: 10px;
+}
+
+QLabel#HelpStepNumber {
+    color: #4F6EF7;
+    font-size: 17px;
+    font-weight: 800;
+}
+
+QLabel#HelpQuestion {
+    color: #24324A;
+    font-size: 10px;
+    font-weight: 750;
+    padding-top: 5px;
+}
+
+QLabel#HelpAnswer {
+    color: #667085;
+    font-size: 10px;
+    padding-bottom: 5px;
+}
+
+QLabel#HelpAboutName {
+    color: #4F6EF7;
+    font-size: 20px;
+    font-weight: 800;
+}

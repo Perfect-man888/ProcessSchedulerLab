@@ -1,0 +1,168 @@
+from app.models.process import ProcessState
+from app.services.process_manager import ProcessManager
+from app.services.resource_manager import ResourceManager
+from app.services.simulation_service import SimulationService
+from app.services.export_service import ExportService
+from app.ui.process_page import CreateProcessDialog, ProcessPage
+from app.ui.main_window import MainWindow
+from app.widgets.filter_combo import FilterCombo
+from app.widgets.number_input import NumberInput
+from app.widgets.state_badge import StateBadge
+from app.widgets.dialogs import MessageDialog
+
+
+def test_number_input_clamps_values(qapp):
+    control = NumberInput(1, 10, 5, "tick")
+
+    control.setValue(99)
+    assert control.value() == 10
+
+    control.editor.clear()
+    control._normalize()
+    assert control.value() == 1
+
+
+def test_filter_combo_has_deterministic_selection(qapp):
+    control = FilterCombo()
+    control.addItems(["全部状态", "就绪", "挂起"])
+
+    assert control.currentText() == "全部状态"
+
+    control.setCurrentIndex(2)
+    assert control.currentText() == "挂起"
+
+
+def test_create_dialog_realtime_toggle_and_submission(qapp):
+    manager = ProcessManager(ResourceManager())
+    dialog = CreateProcessDialog(manager)
+
+    assert not dialog.deadline_input.isEnabled()
+    assert not dialog.period_input.isEnabled()
+
+    dialog.name_input.setText("RealtimeWorker")
+    dialog.arrival_input.setValue(2)
+    dialog.realtime_toggle.setChecked(True)
+    dialog.deadline_input.setValue(12)
+    dialog.period_input.setValue(20)
+    dialog._create_process()
+
+    process = manager.processes[0]
+    assert process.deadline == 12
+    assert process.period == 20
+    assert dialog.result() == dialog.DialogCode.Accepted
+
+
+def test_create_dialog_fits_minimum_supported_screen(qapp):
+    dialog = CreateProcessDialog(ProcessManager(ResourceManager()))
+
+    assert dialog.sizeHint().height() <= 720
+    assert dialog.sizeHint().width() <= 1200
+
+
+def test_process_page_refreshes_table_and_state_badge(qapp):
+    manager = ProcessManager(ResourceManager())
+    page = ProcessPage(manager)
+
+    process = manager.create_process(
+        name="Compiler",
+        arrival_time=0,
+        burst_time=8,
+        priority=3,
+        memory_mb=512,
+        io_devices=1,
+    )
+
+    assert page.table.rowCount() == 1
+    assert page.table.item(0, 0).text() == process.pid
+    assert isinstance(page.table.cellWidget(0, 2), StateBadge)
+    assert page.ready_card.value_label.text() == "1"
+
+    manager.suspend_process(process.pid)
+    assert process.state is ProcessState.SUSPENDED
+    assert page.suspended_card.value_label.text() == "1"
+
+
+def test_process_page_search_and_state_filter(qapp):
+    manager = ProcessManager(ResourceManager())
+    page = ProcessPage(manager)
+    manager.create_process(
+        name="Compiler",
+        arrival_time=0,
+        burst_time=8,
+        priority=3,
+        memory_mb=512,
+        io_devices=1,
+    )
+    editor = manager.create_process(
+        name="Editor",
+        arrival_time=1,
+        burst_time=4,
+        priority=1,
+        memory_mb=256,
+        io_devices=1,
+    )
+    manager.suspend_process(editor.pid)
+
+    page.search_input.setText("compiler")
+    assert page.table.rowCount() == 1
+
+    page.search_input.clear()
+    page.state_filter.setCurrentIndex(3)
+    assert page.table.rowCount() == 1
+    assert page.table.item(0, 1).text() == "Editor"
+
+
+def test_main_window_smoke_at_supported_sizes(qapp):
+    window = MainWindow()
+
+    for width, height in [(1280, 760), (1480, 900), (1920, 1080)]:
+        window.resize(width, height)
+        window.show()
+        qapp.processEvents()
+        window._navigate(1)
+        qapp.processEvents()
+        assert window.stack.currentIndex() == 1
+
+    window.close()
+
+
+def test_process_page_import_replaces_dataset_and_unloads_scheduler(
+    qapp, monkeypatch, tmp_path
+):
+    source = ProcessManager(ResourceManager())
+    source.create_process(
+        pid="P007",
+        name="Imported",
+        arrival_time=2,
+        burst_time=4,
+        priority=1,
+        memory_mb=96,
+        io_devices=0,
+    )
+    dataset = ExportService.save_dataset_json(tmp_path / "dataset.json", source.processes)
+
+    manager = ProcessManager(ResourceManager())
+    manager.create_process(
+        name="Old",
+        arrival_time=0,
+        burst_time=1,
+        priority=1,
+        memory_mb=64,
+        io_devices=0,
+    )
+    service = SimulationService(manager)
+    service.load("fcfs")
+    page = ProcessPage(manager, service)
+    monkeypatch.setattr(
+        "app.ui.process_page.QFileDialog.getOpenFileName",
+        lambda *args: (str(dataset), "JSON Files (*.json)"),
+    )
+    monkeypatch.setattr(MessageDialog, "confirm_danger", lambda *args: True)
+    monkeypatch.setattr(MessageDialog, "exec", lambda self: 1)
+
+    page.import_dataset()
+
+    assert [process.pid for process in manager.processes] == ["P007"]
+    assert manager.processes[0].name == "Imported"
+    assert service.scheduler is None
+    assert page.table.rowCount() == 1
