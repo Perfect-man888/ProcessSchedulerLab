@@ -5,6 +5,7 @@ from app.schedulers.edf import EDFScheduler
 from app.schedulers.fcfs import FCFSScheduler
 from app.schedulers.mlfq import MLFQScheduler
 from app.schedulers.priority import PriorityScheduler
+from app.schedulers.rms import RMSScheduler
 from app.schedulers.round_robin import RoundRobinScheduler
 from app.schedulers.sjf import SJFScheduler
 from app.schedulers.srtf import SRTFScheduler
@@ -18,6 +19,7 @@ SCHEDULER_FACTORIES: dict[str, SchedulerFactory] = {
     "priority": PriorityScheduler,
     "round_robin": RoundRobinScheduler,
     "edf": EDFScheduler,
+    "rms": RMSScheduler,
     "mlfq": MLFQScheduler,
 }
 

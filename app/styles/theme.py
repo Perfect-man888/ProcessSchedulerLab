@@ -28,6 +28,7 @@ COLORS = {
     "cyan": "#0EA5E9",
     "ready": "#4F6EF7",
     "running": "#16A36A",
+    "blocked": "#F59E0B",
     "suspended": "#8B5CF6",
     "finished": "#98A2B3",
 }

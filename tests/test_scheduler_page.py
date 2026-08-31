@@ -21,6 +21,7 @@ def add_process(
     burst=3,
     priority=1,
     deadline=None,
+    period=None,
 ):
     return manager.create_process(
         name=name,
@@ -28,6 +29,7 @@ def add_process(
         burst_time=burst,
         priority=priority,
         deadline=deadline,
+        period=period,
         memory_mb=64,
         io_devices=0,
     )
@@ -52,6 +54,8 @@ def test_scheduler_page_initial_state_and_algorithm_parameter_pages(qapp):
     page.algorithm_combo.setCurrentIndex(4)
     assert page.parameter_stack.currentIndex() == 2
     page.algorithm_combo.setCurrentIndex(6)
+    assert page.parameter_stack.currentIndex() == 0
+    page.algorithm_combo.setCurrentIndex(7)
     assert page.parameter_stack.currentIndex() == 3
 
     add_process(manager)
@@ -137,7 +141,7 @@ def test_edf_validation_error_is_presented_without_partial_load(qapp, monkeypatc
 def test_mlfq_configuration_is_forwarded_to_scheduler(qapp):
     manager, service, page = make_page()
     add_process(manager)
-    page.algorithm_combo.setCurrentIndex(6)
+    page.algorithm_combo.setCurrentIndex(7)
     for control, value in zip(page.mlfq_inputs, (2, 4, 8)):
         control.setValue(value)
     page.boost_input.setValue(16)
@@ -164,7 +168,7 @@ def test_mlfq_ready_processes_are_split_into_three_visible_queues(qapp):
     manager, service, page = make_page()
     first = add_process(manager, "Alpha", burst=5)
     add_process(manager, "Beta", burst=5)
-    page.algorithm_combo.setCurrentIndex(6)
+    page.algorithm_combo.setCurrentIndex(7)
 
     assert page.load_experiment()
     assert page.mlfq_queue_widget.isVisibleTo(page)
@@ -191,6 +195,18 @@ def test_priority_queue_is_visualized_in_policy_order(qapp):
     assert "优先级" in page.queue_rule_label.text()
     assert "P002" in page.ready_queue_layout.itemAt(0).widget().text()
     assert "优先级 1" in page.ready_queue_layout.itemAt(0).widget().text()
+
+
+def test_rms_queue_is_visualized_in_period_order(qapp):
+    manager, service, page = make_page()
+    add_process(manager, "Slow", period=20)
+    add_process(manager, "Fast", period=5)
+    page.algorithm_combo.setCurrentIndex(6)
+
+    assert page.load_experiment()
+    assert "Period" in page.queue_rule_label.text()
+    assert "P002" in page.ready_queue_layout.itemAt(0).widget().text()
+    assert "T=5" in page.ready_queue_layout.itemAt(0).widget().text()
 
 
 def test_gantt_chart_scales_for_long_timelines(qapp):

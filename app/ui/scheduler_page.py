@@ -30,6 +30,8 @@ from app.widgets.gantt_chart import GanttChart
 from app.widgets.number_input import NumberInput
 from app.widgets.stat_card import StatCard
 
+SWITCH_COSTS = (("0 Tick", 0), ("1 Tick", 1), ("2 Tick", 2), ("3 Tick", 3))
+
 
 class SchedulerPanel(QFrame):
     def __init__(self, parent=None):
@@ -52,6 +54,7 @@ class SchedulerPage(QWidget):
         ("Priority · 优先级", "priority"),
         ("Round Robin · 时间片轮转", "round_robin"),
         ("EDF · 最早截止时间", "edf"),
+        ("RMS · 单调速率调度", "rms"),
         ("MLFQ · 多级反馈队列", "mlfq"),
     )
     SPEEDS = (("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0), ("5×", 5.0))
@@ -63,6 +66,7 @@ class SchedulerPage(QWidget):
         "priority": "数字越小优先级越高，可选择抢占式或非抢占式。",
         "round_robin": "按固定时间片循环分配 CPU，适合分时交互场景。",
         "edf": "优先执行绝对截止时间最早的任务，要求全部进程填写 Deadline。",
+        "rms": "周期越短优先级越高，静态优先级实时调度，要求全部进程填写 Period。",
         "mlfq": "新任务从高优先级队列开始，时间片耗尽后逐级下沉。",
     }
 
@@ -193,6 +197,12 @@ class SchedulerPage(QWidget):
         self.speed_combo.addItems([name for name, _ in self.SPEEDS])
         self.speed_combo.setCurrentIndex(1)
         config.addWidget(self._field("仿真速度", self.speed_combo), 1)
+
+        self.switch_cost_combo = FilterCombo()
+        self.switch_cost_combo.setObjectName("SchedulerCombo")
+        self.switch_cost_combo.addItems([name for name, _ in SWITCH_COSTS])
+        self.switch_cost_combo.currentIndexChanged.connect(self._on_switch_cost_changed)
+        config.addWidget(self._field("上下文切换开销", self.switch_cost_combo), 1)
         layout.addLayout(config)
 
         actions = QHBoxLayout()
@@ -365,6 +375,11 @@ class SchedulerPage(QWidget):
         self.mlfq_queue_widget.hide()
         layout.addWidget(self.mlfq_queue_widget)
 
+        layout.addWidget(self._small_label("等待 I/O / BLOCKED"))
+        self.blocked_queue_layout = QHBoxLayout()
+        self.blocked_queue_layout.setSpacing(7)
+        layout.addLayout(self.blocked_queue_layout)
+
         layout.addWidget(self._small_label("尚未到达 / NEW"))
         self.new_queue_layout = QHBoxLayout()
         self.new_queue_layout.setSpacing(7)
@@ -434,6 +449,9 @@ class SchedulerPage(QWidget):
 
     def _on_speed_changed(self, index: int) -> None:
         self.simulation_service.set_speed(self.SPEEDS[index][1])
+
+    def _on_switch_cost_changed(self, index: int) -> None:
+        self.simulation_service.set_switch_cost(SWITCH_COSTS[index][1])
 
     def _scheduler_selection(self) -> tuple[str, dict]:
         key = self.ALGORITHMS[self.algorithm_combo.currentIndex()][1]
@@ -506,14 +524,16 @@ class SchedulerPage(QWidget):
             else "暂无运行进程"
         )
         self.utilization_card.set_value(f"{state.cpu_utilization * 100:.1f}%")
-        self.utilization_card.set_subtitle(f"{state.busy_ticks} / {state.total_ticks} 个忙碌 Tick")
+        self.utilization_card.set_subtitle(
+            f"{state.effective_busy_ticks} / {state.total_ticks} 有效忙碌 Tick"
+        )
         self.switch_card.set_value(str(state.context_switches))
         self.gantt_chart.set_segments(state.segments)
         self.timeline_summary.setText(f"{len(state.segments)} SEGMENTS · T={state.clock}")
         self.export_gantt_button.setEnabled(bool(state.segments))
 
         self._refresh_status(loaded, state.status)
-        self._refresh_queues(state.ready_queue, state.new_processes)
+        self._refresh_queues(state.ready_queue, state.blocked_processes, state.new_processes)
         self._refresh_events()
         self._refresh_processes()
         self._sync_controls(loaded, state.status)
@@ -538,6 +558,7 @@ class SchedulerPage(QWidget):
     def _refresh_queues(
         self,
         ready: list[Process],
+        blocked: list[Process],
         new: list[Process],
     ) -> None:
         scheduler = self.simulation_service.scheduler
@@ -575,6 +596,12 @@ class SchedulerPage(QWidget):
                 self._fill_queue(layout, processes, "空", lambda process: f"剩余 {process.remaining_time}")
         else:
             self._fill_queue(self.ready_queue_layout, ordered, "就绪队列为空", detail)
+        self._fill_queue(
+            self.blocked_queue_layout,
+            blocked,
+            "没有 I/O 等待中的进程",
+            lambda process: f"剩余 I/O {process.io_remaining}",
+        )
         self._fill_queue(self.new_queue_layout, new, "没有等待到达的进程")
 
     @staticmethod
@@ -587,6 +614,8 @@ class SchedulerPage(QWidget):
             return sorted(ready, key=lambda p: (p.priority, p.arrival_time, p.pid)), "优先级数字升序", lambda p: f"优先级 {p.priority}"
         if scheduler_name == "EDF":
             return sorted(ready, key=lambda p: (p.deadline if p.deadline is not None else float("inf"), p.arrival_time, p.pid)), "Deadline 升序", lambda p: f"D={p.deadline_text}"
+        if scheduler_name == "RMS":
+            return sorted(ready, key=lambda p: (p.period if p.period is not None else float("inf"), p.arrival_time, p.pid)), "Period 升序", lambda p: f"T={p.period_text}"
         if scheduler_name == "MLFQ":
             return list(ready), "队列层级 + 层内 FIFO", lambda p: f"剩余 {p.remaining_time}"
         rule = "到达 / 入队顺序（FIFO）" if scheduler_name else "加载算法后显示"
@@ -657,9 +686,10 @@ class SchedulerPage(QWidget):
                         ProcessState.NEW: COLORS["cyan"],
                         ProcessState.READY: COLORS["ready"],
                         ProcessState.RUNNING: COLORS["running"],
-                        ProcessState.SUSPENDED: COLORS["suspended"],
-                        ProcessState.FINISHED: COLORS["finished"],
-                    }[process.state]
+                    ProcessState.BLOCKED: COLORS["blocked"],
+                    ProcessState.SUSPENDED: COLORS["suspended"],
+                    ProcessState.FINISHED: COLORS["finished"],
+                }[process.state]
                     item.setForeground(QColor(color))
                 self.process_table.setItem(row, column, item)
 
@@ -686,6 +716,7 @@ class SchedulerPage(QWidget):
             self.quantum_input,
             *self.mlfq_inputs,
             self.boost_input,
+            self.switch_cost_combo,
         ):
             control.setEnabled(not running)
 

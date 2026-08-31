@@ -37,6 +37,15 @@ def test_create_process_assigns_pid_state_and_resources(manager):
     assert manager.resource_manager.resource.used_io_devices == 2
 
 
+def test_create_process_rejects_reserved_switch_pid_without_allocating_resources(manager):
+    with pytest.raises(ValueError, match="系统保留标识"):
+        create_process(manager, pid="switch")
+
+    assert manager.processes == []
+    assert manager.resource_manager.resource.used_memory_mb == 0
+    assert manager.resource_manager.resource.used_io_devices == 0
+
+
 def test_suspend_activate_and_revoke_process(manager):
     process = create_process(manager)
 

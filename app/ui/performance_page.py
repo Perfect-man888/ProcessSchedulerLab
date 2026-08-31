@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.experiment_result import ExperimentReport
+from app.models.schedule_result import ScheduleResult
 from app.services.experiment_service import (
     EXPERIMENT_PRESETS,
     ExperimentService,
@@ -30,6 +31,7 @@ from app.widgets.dialogs import MessageDialog
 from app.widgets.filter_combo import FilterCombo
 from app.widgets.number_input import NumberInput
 from app.widgets.performance_chart import PerformanceChart
+from app.widgets.quantum_scan_chart import QuantumScanChart
 from app.widgets.stat_card import StatCard
 
 
@@ -54,16 +56,20 @@ class NumericItem(QTableWidgetItem):
 
 
 class ExperimentWorker(QObject):
-    """在线程中运行批量实验，避免大数据集阻塞界面。"""
+    """在线程中运行批量实验，避免大数据集阻塞界面。
+
+    当 scan_quanta 非空时执行 RR Quantum 灵敏度扫描，否则执行全算法比较。
+    """
 
     progress = Signal(int, str)
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, processes, options: dict, parent=None):
+    def __init__(self, processes, options: dict, scan_quanta=(), parent=None):
         super().__init__(parent)
         self.processes = tuple(processes)
         self.options = dict(options)
+        self.scan_quanta = tuple(scan_quanta)
         self._cancelled = Event()
 
     def cancel(self) -> None:
@@ -74,15 +80,22 @@ class ExperimentWorker(QObject):
         service = ExperimentService()
         service.progress.connect(self.progress.emit)
         try:
-            report = service.run_all(
-                self.processes,
-                should_cancel=self._cancelled.is_set,
-                **self.options,
-            )
-        except (ValueError, RuntimeError) as error:
+            if self.scan_quanta:
+                payload = service.run_quantum_scan(
+                    self.processes,
+                    quantum_range=self.scan_quanta,
+                    should_cancel=self._cancelled.is_set,
+                )
+            else:
+                payload = service.run_all(
+                    self.processes,
+                    should_cancel=self._cancelled.is_set,
+                    **self.options,
+                )
+        except Exception as error:  # noqa: BLE001 - 线程边界必须兜底，避免线程永不收尾。
             self.failed.emit(str(error))
             return
-        self.succeeded.emit(report)
+        self.succeeded.emit(payload)
 
 
 class PerformancePage(QWidget):
@@ -102,6 +115,7 @@ class PerformancePage(QWidget):
         self.report: ExperimentReport | None = None
         self._thread: QThread | None = None
         self._worker: ExperimentWorker | None = None
+        self._closed = False
 
         self._build_ui()
         if self.settings_service is not None:
@@ -140,6 +154,7 @@ class PerformancePage(QWidget):
         charts.addWidget(self._build_chart_panel("时延指标", "等待、周转与响应时间", "latency"), 1)
         charts.addWidget(self._build_chart_panel("系统开销", "切换次数与 CPU 利用率", "system"), 1)
         root.addLayout(charts)
+        root.addWidget(self._build_quantum_scan_panel())
         root.addWidget(self._build_observation_panel())
         root.addStretch()
 
@@ -205,6 +220,12 @@ class PerformancePage(QWidget):
         self.cancel_button.clicked.connect(self.cancel_comparison)
         self.cancel_button.setVisible(False)
         row.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignBottom)
+        self.scan_button = QPushButton("⚡  RR 量子扫描")
+        self.scan_button.setObjectName("SecondaryButton")
+        self.scan_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.scan_button.setMinimumHeight(42)
+        self.scan_button.clicked.connect(self.start_quantum_scan)
+        row.addWidget(self.scan_button, 0, Qt.AlignmentFlag.AlignBottom)
         layout.addLayout(row)
         return panel
 
@@ -302,6 +323,27 @@ class PerformancePage(QWidget):
         layout.addWidget(chart)
         return panel
 
+    def _build_quantum_scan_panel(self) -> AnalysisPanel:
+        panel = AnalysisPanel()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(20, 19, 20, 18)
+        layout.setSpacing(8)
+        title = QLabel("RR 时间片灵敏度扫描")
+        title.setObjectName("PanelTitle")
+        subtitle = QLabel(
+            "固定数据集上扫描 Quantum 1–8，观察时间片大小对时延与切换开销的权衡。"
+        )
+        subtitle.setObjectName("PanelSubtitle")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        self.quantum_chart = QuantumScanChart()
+        layout.addWidget(self.quantum_chart)
+        self.quantum_observation = QLabel("尚未运行 RR 时间片扫描。")
+        self.quantum_observation.setObjectName("ObservationItem")
+        self.quantum_observation.setWordWrap(True)
+        layout.addWidget(self.quantum_observation)
+        return panel
+
     def _build_observation_panel(self) -> AnalysisPanel:
         panel = AnalysisPanel()
         layout = QVBoxLayout(panel)
@@ -321,7 +363,35 @@ class PerformancePage(QWidget):
 
     def _on_dataset_changed(self, index: int) -> None:
         self.report = None
+        self._clear_analysis()
         self._refresh_dataset_summary()
+
+    def _clear_analysis(self) -> None:
+        """数据集切换后清空旧结果，避免表格/图表展示过期数据。"""
+
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(0)
+        self.table.setSortingEnabled(True)
+        self.latency_chart.update_results(())
+        self.system_chart.update_results(())
+        self.quantum_chart.set_data(())
+        self.quantum_observation.setText("尚未运行 RR 时间片扫描。")
+        self._fill_observations(("运行比较后将在这里生成数据驱动的实验观察。",))
+        self.skip_label.setText("尚未运行")
+        self.algorithm_card.set_value("—")
+        self.algorithm_card.set_subtitle("等待批量实验")
+        self.wait_card.set_value("—")
+        self.wait_card.set_subtitle("平均等待时间最低")
+        self.response_card.set_value("—")
+        self.response_card.set_subtitle("平均响应时间最低")
+        self.utilization_card.set_value("—")
+        self.utilization_card.set_subtitle("CPU 利用率最高")
+        for button in (
+            self.export_csv_button,
+            self.export_charts_button,
+            self.export_pdf_button,
+        ):
+            button.setEnabled(False)
 
     def _refresh_dataset_summary(self) -> None:
         index = self.dataset_combo.currentIndex()
@@ -331,12 +401,14 @@ class PerformancePage(QWidget):
                 f"使用进程管理页中的 {count} 个 PCB；比较过程基于独立副本，不修改当前仿真。"
             )
             self.run_button.setEnabled(count > 0)
+            self.scan_button.setEnabled(count > 0)
         else:
             preset = EXPERIMENT_PRESETS[index - 1]
             self.dataset_description.setText(
                 f"{preset.description} · {len(preset.processes)} 个固定进程"
             )
             self.run_button.setEnabled(True)
+            self.scan_button.setEnabled(True)
 
     def _selected_dataset(self):
         index = self.dataset_combo.currentIndex()
@@ -369,23 +441,29 @@ class PerformancePage(QWidget):
         return True
 
     def start_comparison(self) -> None:
-        if self._thread is not None:
-            return
         name, processes = self._selected_dataset()
-        if not processes:
+        if not processes or self._thread is not None:
             return
-
         options = {
             "dataset_name": name,
             "rr_quantum": self.quantum_input.value(),
             "priority_aging_interval": self._aging_interval(),
         }
+        self._launch_worker(processes, options)
+
+    def start_quantum_scan(self) -> None:
+        _, processes = self._selected_dataset()
+        if not processes or self._thread is not None:
+            return
+        self._launch_worker(processes, {}, scan_quanta=range(1, 9))
+
+    def _launch_worker(self, processes, options: dict, scan_quanta=()) -> None:
         self.report = None
         self._set_experiment_controls(True)
         self._set_status("●  正在计算", "running")
 
         thread = QThread(self)
-        worker = ExperimentWorker(processes, options)
+        worker = ExperimentWorker(processes, options, scan_quanta=scan_quanta)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.progress.connect(self._on_progress)
@@ -407,15 +485,22 @@ class PerformancePage(QWidget):
         self._set_status("●  正在取消", "running")
 
     @Slot(object)
-    def _on_async_success(self, report: ExperimentReport) -> None:
-        self.report = report
-        self._render_report(report)
-        self._set_status("●  比较完成", "finished")
+    def _on_async_success(self, payload) -> None:
+        if self._closed:
+            return
+        if isinstance(payload, ExperimentReport):
+            self.report = payload
+            self._render_report(payload)
+        else:
+            self._render_quantum_scan(payload)
+        self._set_status("●  比较完成" if isinstance(payload, ExperimentReport) else "●  扫描完成", "finished")
         self._set_experiment_controls(False)
         self._refresh_dataset_summary()
 
     @Slot(str)
     def _on_async_failure(self, message: str) -> None:
+        if self._closed:
+            return
         cancelled = message == "实验已取消。"
         if not cancelled:
             MessageDialog.show_error(self, "实验运行失败", message)
@@ -436,6 +521,7 @@ class PerformancePage(QWidget):
         self.quantum_input.setEnabled(not running)
         self.aging_combo.setEnabled(not running)
         self.run_button.setEnabled(not running)
+        self.scan_button.setEnabled(not running)
         self.cancel_button.setVisible(running)
         self.cancel_button.setEnabled(running)
         for button in (
@@ -449,11 +535,18 @@ class PerformancePage(QWidget):
         return (None, 2, 4, 6)[self.aging_combo.currentIndex()]
 
     def shutdown_worker(self) -> None:
+        self._closed = True
         if self._worker is not None:
             self._worker.cancel()
         if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait(3000)
+            thread = self._thread
+            thread.quit()
+            if not thread.wait(5000):
+                # 计算线程未在期限内退出，强制终止以免窗口销毁后回调悬空。
+                thread.terminate()
+                thread.wait(1000)
+            self._worker = None
+            self._thread = None
 
     def closeEvent(self, event) -> None:
         self.shutdown_worker()
@@ -496,7 +589,7 @@ class PerformancePage(QWidget):
         self.table.setSortingEnabled(True)
 
         self.skip_label.setText(
-            "全部 7 种算法已完成"
+            f"全部 {len(self.experiment_service.DEFAULT_ALGORITHMS)} 种算法已完成"
             if not report.skipped
             else " · ".join(f"跳过 {item.display_name}" for item in report.skipped)
         )
@@ -506,6 +599,28 @@ class PerformancePage(QWidget):
         self.export_csv_button.setEnabled(True)
         self.export_charts_button.setEnabled(True)
         self.export_pdf_button.setEnabled(True)
+
+    def _render_quantum_scan(self, data: tuple[tuple[int, ScheduleResult], ...]) -> None:
+        if not data:
+            return
+        self.quantum_chart.set_data(data)
+        best_turnaround = min(
+            data, key=lambda item: item[1].average_turnaround_time
+        )
+        best_response = min(
+            data, key=lambda item: item[1].average_response_time
+        )
+        best_switches = min(
+            data, key=lambda item: item[1].context_switches
+        )
+        self.quantum_observation.setText(
+            f"Quantum={best_turnaround[0]} 时平均周转时间最低"
+            f"（{best_turnaround[1].average_turnaround_time:.2f} Tick）；"
+            f"Quantum={best_response[0]} 时平均响应时间最低"
+            f"（{best_response[1].average_response_time:.2f} Tick）；"
+            f"Quantum={best_switches[0]} 时上下文切换最少"
+            f"（{best_switches[1].context_switches} 次）。"
+        )
 
     @staticmethod
     def _set_best_card(card, results, metric: str, suffix: str) -> None:

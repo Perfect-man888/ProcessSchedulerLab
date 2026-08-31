@@ -250,4 +250,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.performance_page.shutdown_worker()
+        self.simulation_service.timer.stop()
         super().closeEvent(event)

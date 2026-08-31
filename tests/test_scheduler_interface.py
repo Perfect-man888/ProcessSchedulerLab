@@ -6,6 +6,7 @@ from app.schedulers import (
     FCFSScheduler,
     MLFQScheduler,
     PriorityScheduler,
+    RMSScheduler,
     RoundRobinScheduler,
     SchedulerCategory,
     SJFScheduler,
@@ -22,6 +23,7 @@ from app.schedulers import (
         (SRTFScheduler(), SchedulerCategory.BATCH, True),
         (RoundRobinScheduler(), SchedulerCategory.TIME_SHARING, True),
         (EDFScheduler(), SchedulerCategory.REAL_TIME, True),
+        (RMSScheduler(), SchedulerCategory.REAL_TIME, True),
         (MLFQScheduler(), SchedulerCategory.TIME_SHARING, True),
         (PriorityScheduler(), SchedulerCategory.GENERAL, True),
         (

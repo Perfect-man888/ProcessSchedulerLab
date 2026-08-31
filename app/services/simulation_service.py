@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from app.models.process import Process, ProcessState
@@ -23,10 +25,13 @@ class SimulationService(QObject):
         parent=None,
         *,
         base_interval_ms: int = 800,
+        switch_cost: int = 0,
     ):
         super().__init__(parent)
         if base_interval_ms <= 0:
             raise ValueError("基础 Tick 间隔必须大于 0。")
+        if switch_cost < 0:
+            raise ValueError("上下文切换开销不能小于 0。")
 
         self.process_manager = process_manager
         self.resource_manager = process_manager.resource_manager
@@ -37,8 +42,10 @@ class SimulationService(QObject):
         self._loaded_process_ids: set[str] = set()
         self._last_running_pid: str | None = None
         self._preserve_next_segment_boundary = False
+        self._switching = False
         self._base_interval_ms = base_interval_ms
         self._speed = 1.0
+        self._default_switch_cost = switch_cost
 
         self.timer = QTimer(self)
         self.timer.setInterval(base_interval_ms)
@@ -75,9 +82,10 @@ class SimulationService(QObject):
             raise TypeError("scheduler 必须是算法键或 BaseScheduler 实例。")
 
         selected.validate_processes(processes)
+        self._validate_resource_capacity(processes)
         self._scheduler = selected
         self._loaded = True
-        self._restore_runtime(SimulationEventType.LOAD)
+        self._restore_runtime(SimulationEventType.LOAD, switch_cost=self._default_switch_cost)
 
     def reset(self) -> None:
         self._require_loaded()
@@ -93,22 +101,36 @@ class SimulationService(QObject):
         self._loaded_process_ids.clear()
         self._last_running_pid = None
         self._preserve_next_segment_boundary = False
+        self._switching = False
+        self.state.switch_cost = self._default_switch_cost
         self.process_manager.simulation_time = 0
         self.process_manager.changed.emit()
         self.changed.emit()
 
-    def _restore_runtime(self, event_type: SimulationEventType) -> None:
-        self.timer.stop()
-        self.state.reset_runtime()
-        self._scheduler.reset()
-        self._last_running_pid = None
-        self._preserve_next_segment_boundary = False
+    def set_switch_cost(self, switch_cost: int) -> None:
+        if switch_cost < 0:
+            raise ValueError("上下文切换开销不能小于 0。")
+        self._default_switch_cost = switch_cost
+        self.state.switch_cost = switch_cost
+        self.changed.emit()
 
-        self.resource_manager.reset()
+    def _restore_runtime(self, event_type: SimulationEventType, *, switch_cost: int | None = None) -> None:
         processes = sorted(
             self.process_manager.processes,
             key=lambda process: (process.arrival_time, process.pid),
         )
+        self._validate_resource_capacity(processes)
+
+        self.timer.stop()
+        self.state.reset_runtime()
+        if switch_cost is not None:
+            self.state.switch_cost = switch_cost
+        self._scheduler.reset()
+        self._last_running_pid = None
+        self._preserve_next_segment_boundary = False
+        self._switching = False
+
+        self.resource_manager.reset()
         self._loaded_process_ids = {process.pid for process in processes}
 
         for process in processes:
@@ -119,13 +141,19 @@ class SimulationService(QObject):
             process.turnaround_time = None
             process.weighted_turnaround_time = None
             process.response_time = None
+            process.ready_waiting_ticks = 0
             process.state = ProcessState.NEW
             self.resource_manager.allocate(process.memory_mb, process.io_devices)
             process.resources_allocated = True
 
         self.state.new_processes.extend(processes)
+        if switch_cost is None:
+            self.state.switch_cost = self._default_switch_cost
         self.process_manager.simulation_time = 0
         self._emit_event(event_type, detail=f"{self._scheduler.name} 实验已就绪")
+        for process in self.process_manager.processes:
+            process.io_remaining = 0
+            process.io_ticks_run = 0
         self._admit_arrivals()
         self.process_manager.changed.emit()
         self._set_status(SimulationStatus.IDLE)
@@ -191,12 +219,34 @@ class SimulationService(QObject):
 
     def _advance_one_tick(self) -> bool:
         self._admit_arrivals()
+        self._handle_io_completion()
+
+        if self.state.switch_remaining > 0:
+            self._run_switch_tick()
+            self.state.switch_remaining -= 1
+            self._finish_or_pause_if_needed()
+            self.process_manager.changed.emit()
+            self.changed.emit()
+            return True
+
         self._apply_policy_preemption()
         self._dispatch_if_needed()
 
+        if self.state.switch_remaining > 0:
+            self._run_switch_tick()
+            self.state.switch_remaining -= 1
+            self._finish_or_pause_if_needed()
+            self.process_manager.changed.emit()
+            self.changed.emit()
+            return True
+
         current = self.state.current_process
         if current is None:
-            if not self.state.new_processes and not self.state.ready_queue:
+            if (
+                not self.state.new_processes
+                and not self.state.ready_queue
+                and not self.state.blocked_processes
+            ):
                 self._handle_no_runnable_processes()
                 return False
             self._run_idle_tick()
@@ -264,18 +314,38 @@ class SimulationService(QObject):
             self.state.clock,
         )
         if selected is None:
+            # 切换窗口结束但就绪队列已空，复位切换标记等待新目标。
+            self._switching = False
+            return
+
+        if not self._switching and (
+            self.state.switch_cost > 0
+            and self._last_running_pid is not None
+            and self._last_running_pid != selected.pid
+        ):
+            self.state.switch_remaining = self.state.switch_cost
+            self.state.context_switches += 1
+            self._switching = True
+            self._emit_event(
+                SimulationEventType.CONTEXT_SWITCH,
+                detail=(
+                    f"切换开销 {self.state.switch_cost} Tick；"
+                    "目标进程将在切换结束后按调度策略确定"
+                ),
+            )
             return
 
         self.state.ready_queue.remove(selected)
         selected.state = ProcessState.RUNNING
         if selected.start_time is None:
             selected.start_time = self.state.clock
-        if (
+        if not self._switching and (
             self._last_running_pid is not None
             and self._last_running_pid != selected.pid
         ):
             self.state.context_switches += 1
         self._last_running_pid = selected.pid
+        self._switching = False
         self.state.current_process = selected
         self._scheduler.on_dispatch(selected, self.state.clock)
         self._emit_event(
@@ -283,6 +353,14 @@ class SimulationService(QObject):
             selected.pid,
             f"{selected.pid} 获得 CPU",
         )
+
+    def _run_switch_tick(self) -> None:
+        append_segment(
+            self.state.segments,
+            ScheduleSegment(self.state.clock, self.state.clock + 1, pid="SWITCH"),
+        )
+        self.state.total_ticks += 1
+        self._advance_clock()
 
     def _run_idle_tick(self) -> None:
         if not self.state.segments or not self.state.segments[-1].is_idle:
@@ -297,6 +375,7 @@ class SimulationService(QObject):
     def _run_process_tick(self, process: Process) -> None:
         level = self._scheduler.queue_level(process)
         process.remaining_time -= 1
+        process.io_ticks_run += 1
         self._scheduler.on_tick(process, self.state.clock)
         append_segment(
             self.state.segments,
@@ -317,6 +396,9 @@ class SimulationService(QObject):
             self._finish_process(process)
             return
 
+        if self._maybe_request_io(process):
+            return
+
         reason = self._scheduler.preemption_reason(
             process,
             self.state.ready_queue,
@@ -325,11 +407,48 @@ class SimulationService(QObject):
         if reason is PreemptionReason.TIME_SLICE:
             self._preempt_current(reason)
 
+    def _maybe_request_io(self, process: Process) -> bool:
+        if (
+            process.io_interval is None
+            or process.io_ticks_run < process.io_interval
+        ):
+            return False
+        process.io_remaining = process.io_duration
+        process.io_ticks_run = 0
+        process.state = ProcessState.BLOCKED
+        self.state.blocked_processes.append(process)
+        self.state.current_process = None
+        self._emit_event(
+            SimulationEventType.IO_REQUEST,
+            process.pid,
+            f"I/O 持续 {process.io_duration} Tick",
+        )
+        return True
+
+    def _handle_io_completion(self) -> None:
+        completed = []
+        for process in self.state.blocked_processes:
+            if process.io_remaining <= 0:
+                # 阻塞时长已满（上一 tick 减到 0），本 tick 恢复就绪。
+                completed.append(process)
+                continue
+            process.io_remaining -= 1
+        for process in completed:
+            self.state.blocked_processes.remove(process)
+            process.state = ProcessState.READY
+            self.state.ready_queue.append(process)
+            self._scheduler.on_ready(process, self.state.clock)
+            self._emit_event(
+                SimulationEventType.IO_COMPLETE,
+                process.pid,
+                "BLOCKED → READY",
+            )
+
     def _finish_process(self, process: Process) -> None:
         process.finish_time = self.state.clock
         process.state = ProcessState.FINISHED
         process.turnaround_time = process.finish_time - process.arrival_time
-        process.waiting_time = process.turnaround_time - process.burst_time
+        process.waiting_time = process.ready_waiting_ticks
         process.weighted_turnaround_time = (
             process.turnaround_time / process.burst_time
         )
@@ -349,13 +468,19 @@ class SimulationService(QObject):
         )
 
     def _advance_clock(self) -> None:
+        for process in self.state.ready_queue:
+            process.ready_waiting_ticks += 1
         self.state.clock += 1
         self.process_manager.simulation_time = self.state.clock
 
     def _finish_or_pause_if_needed(self) -> None:
-        if self.process_manager.processes and all(
-            process.state is ProcessState.FINISHED
+        active = [
+            process
             for process in self.process_manager.processes
+            if process.state is not ProcessState.SUSPENDED
+        ]
+        if active and all(
+            process.state is ProcessState.FINISHED for process in active
         ):
             self.timer.stop()
             self._set_status(SimulationStatus.FINISHED)
@@ -364,6 +489,7 @@ class SimulationService(QObject):
             self.state.current_process is None
             and not self.state.ready_queue
             and not self.state.new_processes
+            and not self.state.blocked_processes
         ):
             self._handle_no_runnable_processes()
 
@@ -378,9 +504,16 @@ class SimulationService(QObject):
             raise ValueError(f"未找到进程 {pid}。")
 
         self.state.ready_queue = [p for p in self.state.ready_queue if p.pid != pid]
+        self.state.blocked_processes = [
+            p for p in self.state.blocked_processes if p.pid != pid
+        ]
         self.state.new_processes = [p for p in self.state.new_processes if p.pid != pid]
         if self.state.current_process is process:
             self.state.current_process = None
+        # 通知调度器清理该进程的算法内部状态（如 Priority aging 时钟），
+        # 避免重新激活后继承过期的老化计时。
+        if process.state is not ProcessState.NEW:
+            self._scheduler.on_preempt(process, self.state.clock, PreemptionReason.POLICY)
         self.process_manager.suspend_process(pid)
         self._emit_event(
             SimulationEventType.SUSPEND,
@@ -415,19 +548,23 @@ class SimulationService(QObject):
             f"SUSPENDED → {process.state.value}",
             publish_activity=False,
         )
+        if self.state.status is SimulationStatus.FINISHED:
+            self._set_status(SimulationStatus.PAUSED)
         self.process_manager.changed.emit()
         self.changed.emit()
 
     def build_result(self) -> ScheduleResult:
         self._require_loaded()
-        if not self.process_manager.processes or not all(
-            process.state is ProcessState.FINISHED
+        completed = [
+            process
             for process in self.process_manager.processes
-        ):
+            if process.state is ProcessState.FINISHED
+        ]
+        if not completed:
             raise ValueError("仿真尚未完成，不能生成最终结果。")
         metrics = tuple(
             ProcessMetrics.from_process(process)
-            for process in sorted(self.process_manager.processes, key=lambda p: p.pid)
+            for process in sorted(completed, key=lambda p: p.pid)
         )
         return ScheduleResult(
             algorithm_name=self._scheduler.name,
@@ -467,6 +604,21 @@ class SimulationService(QObject):
         if not self._loaded or self._scheduler is None:
             raise ValueError("尚未加载调度实验。")
 
+    def _validate_resource_capacity(self, processes: Iterable[Process]) -> None:
+        resource = self.resource_manager.resource
+        required_memory = sum(process.memory_mb for process in processes)
+        required_io = sum(process.io_devices for process in processes)
+        if required_memory > resource.total_memory_mb:
+            raise ValueError(
+                f"现有进程共需 {required_memory} MB 内存，"
+                f"超过系统总内存 {resource.total_memory_mb} MB。"
+            )
+        if required_io > resource.total_io_devices:
+            raise ValueError(
+                f"现有进程共需 {required_io} 个 I/O 设备，"
+                f"超过系统总数 {resource.total_io_devices} 个。"
+            )
+
     def _require_runtime_consistent(self) -> None:
         processes = self.process_manager.processes
         if {process.pid for process in processes} != self._loaded_process_ids:
@@ -478,6 +630,10 @@ class SimulationService(QObject):
         )
         expected_states.update(
             (process.pid, ProcessState.READY) for process in self.state.ready_queue
+        )
+        expected_states.update(
+            (process.pid, ProcessState.BLOCKED)
+            for process in self.state.blocked_processes
         )
         expected_states.update(
             (process.pid, ProcessState.FINISHED)

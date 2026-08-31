@@ -30,7 +30,13 @@ class ScheduleSegment:
         return self.pid is None
 
     @property
+    def is_context_switch(self) -> bool:
+        return self.pid == "SWITCH"
+
+    @property
     def display_name(self) -> str:
+        if self.is_context_switch:
+            return "SWITCH"
         return self.pid or "IDLE"
 
     def can_merge(self, other: "ScheduleSegment") -> bool:

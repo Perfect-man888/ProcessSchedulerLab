@@ -36,6 +36,62 @@ def test_invalid_dataset_is_rejected_with_clear_error(tmp_path):
         ExportService.load_dataset_json(target)
 
 
+def test_pdf_scope_uses_ready_waiting_time_definition():
+    scope = ExportService.REPORT_SCOPE_TEXT
+
+    assert "处于 READY 状态的累计 Tick" in scope
+    assert "切换开销计入分母" in scope
+    assert "等待时间 = 周转时间 - 服务时间" not in scope
+
+
+def test_dataset_json_round_trip_preserves_io_behavior(tmp_path):
+    source = (
+        Process("P001", "Reader", 0, 6, 1, io_interval=2, io_duration=3,
+                memory_mb=64, io_devices=1),
+        Process("P002", "PureCPU", 1, 4, 2, memory_mb=128, io_devices=0),
+    )
+
+    target = ExportService.save_dataset_json(tmp_path / "io-behavior", source)
+    restored = ExportService.load_dataset_json(target)
+
+    assert [process.io_interval for process in restored] == [2, None]
+    assert [process.io_duration for process in restored] == [3, None]
+    assert [process.io_devices for process in restored] == [1, 0]
+    assert all(
+        process.io_interval == original.io_interval
+        and process.io_duration == original.io_duration
+        for process, original in zip(restored, source)
+    )
+
+
+def test_dataset_json_rejects_partial_io_fields(tmp_path):
+    target = tmp_path / "partial-io.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": ExportService.DATASET_SCHEMA,
+                "version": 1,
+                "processes": [
+                    {
+                        "pid": "P001",
+                        "name": "Bad",
+                        "arrival_time": 0,
+                        "burst_time": 2,
+                        "priority": 1,
+                        "memory_mb": 64,
+                        "io_devices": 1,
+                        "io_interval": 2,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="io_interval 与 io_duration"):
+        ExportService.load_dataset_json(target)
+
+
 def test_replace_processes_is_transactional_on_resource_failure(qapp):
     manager = ProcessManager(ResourceManager())
     original = manager.create_process(
@@ -73,9 +129,9 @@ def test_export_report_writes_summary_and_process_csv(tmp_path, qapp):
         summary_rows = list(csv.reader(handle))
     with details.open(encoding="utf-8-sig", newline="") as handle:
         detail_rows = list(csv.reader(handle))
-    assert len(summary_rows) == 8
+    assert len(summary_rows) == 1 + len(report.results)
     assert summary_rows[0][0] == "Algorithm"
-    assert len(detail_rows) == 1 + 7 * len(preset.processes)
+    assert len(detail_rows) == 1 + len(report.results) * len(preset.processes)
     assert detail_rows[0][1] == "PID"
 
 

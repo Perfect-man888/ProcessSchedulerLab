@@ -15,6 +15,7 @@ class StateBadge(QWidget):
             ProcessState.NEW: COLORS["cyan"],
             ProcessState.READY: COLORS["ready"],
             ProcessState.RUNNING: COLORS["running"],
+            ProcessState.BLOCKED: COLORS["blocked"],
             ProcessState.SUSPENDED: COLORS["suspended"],
             ProcessState.FINISHED: COLORS["finished"],
         }

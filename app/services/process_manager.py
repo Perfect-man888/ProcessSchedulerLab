@@ -28,6 +28,8 @@ class ProcessManager(QObject):
         str,  # detail
     )
 
+    RESERVED_PIDS = frozenset({"SWITCH"})
+
     def __init__(
         self,
         resource_manager: ResourceManager,
@@ -84,6 +86,8 @@ class ProcessManager(QObject):
         io_devices: int,
         deadline: int | None = None,
         period: int | None = None,
+        io_interval: int | None = None,
+        io_duration: int | None = None,
     ) -> Process:
 
         name = name.strip()
@@ -123,6 +127,15 @@ class ProcessManager(QObject):
                 "Period 必须大于 0。"
             )
 
+        if io_interval is not None and io_interval <= 0:
+            raise ValueError("I/O 请求间隔必须大于 0。")
+
+        if io_duration is not None and io_duration <= 0:
+            raise ValueError("I/O 持续时间必须大于 0。")
+
+        if (io_interval is None) != (io_duration is None):
+            raise ValueError("io_interval 与 io_duration 必须同时提供或同时为空。")
+
         automatic_pid = pid is None
         if automatic_pid:
             resolved_pid = f"P{self._next_pid:03d}"
@@ -130,6 +143,8 @@ class ProcessManager(QObject):
             resolved_pid = pid.strip()
             if not resolved_pid:
                 raise ValueError("PID 不能为空。")
+            if resolved_pid.upper() in self.RESERVED_PIDS:
+                raise ValueError(f"PID {resolved_pid} 是系统保留标识，不能用于进程。")
             if resolved_pid in self._processes:
                 raise ValueError(f"PID {resolved_pid} 已存在。")
 
@@ -143,6 +158,8 @@ class ProcessManager(QObject):
             period=period,
             memory_mb=memory_mb,
             io_devices=io_devices,
+            io_interval=io_interval,
+            io_duration=io_duration,
             state=(
                 ProcessState.READY
                 if arrival_time <= self.simulation_time
@@ -198,6 +215,11 @@ class ProcessManager(QObject):
         if process.state == ProcessState.FINISHED:
             raise ValueError(
                 "已完成进程不能挂起。"
+            )
+
+        if process.state == ProcessState.BLOCKED:
+            raise ValueError(
+                "阻塞中的进程不能挂起，请等待 I/O 完成。"
             )
 
         old_state = process.state
@@ -302,6 +324,8 @@ class ProcessManager(QObject):
                 period=process.period,
                 memory_mb=process.memory_mb,
                 io_devices=process.io_devices,
+                io_interval=process.io_interval,
+                io_duration=process.io_duration,
             )
 
         self._processes = {

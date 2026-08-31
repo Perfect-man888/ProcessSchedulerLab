@@ -9,6 +9,7 @@ class ProcessState(str, Enum):
     NEW = "NEW"
     READY = "READY"
     RUNNING = "RUNNING"
+    BLOCKED = "BLOCKED"
     SUSPENDED = "SUSPENDED"
     FINISHED = "FINISHED"
 
@@ -18,6 +19,7 @@ class ProcessState(str, Enum):
             ProcessState.NEW: "新建",
             ProcessState.READY: "就绪",
             ProcessState.RUNNING: "运行",
+            ProcessState.BLOCKED: "阻塞",
             ProcessState.SUSPENDED: "挂起",
             ProcessState.FINISHED: "完成",
         }
@@ -44,11 +46,23 @@ class Process:
     memory_mb: int = 256
     io_devices: int = 0
 
+    io_interval: int | None = None
+    io_duration: int | None = None
+
     resources_allocated: bool = True
 
     state: ProcessState = ProcessState.NEW
 
     remaining_time: int = field(
+        init=False
+    )
+    io_remaining: int = field(
+        init=False
+    )
+    io_ticks_run: int = field(
+        init=False
+    )
+    ready_waiting_ticks: int = field(
         init=False
     )
 
@@ -61,13 +75,14 @@ class Process:
     response_time: int | None = None
 
     created_at: datetime = field(
-        default_factory=datetime.now
+        default_factory=datetime.now, compare=False
     )
 
     def __post_init__(self):
-        self.remaining_time = (
-            self.burst_time
-        )
+        self.remaining_time = self.burst_time
+        self.io_remaining = 0
+        self.io_ticks_run = 0
+        self.ready_waiting_ticks = 0
 
     @property
     def is_active(self) -> bool:

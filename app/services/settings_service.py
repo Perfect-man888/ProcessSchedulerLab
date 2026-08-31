@@ -53,6 +53,18 @@ class SettingsService(QObject):
         if default_speed not in self.SPEEDS:
             raise ValueError("仿真速度只能为 0.5×、1×、2× 或 5×。")
 
+        processes = self.process_manager.processes
+        required_memory = sum(process.memory_mb for process in processes)
+        required_io = sum(process.io_devices for process in processes)
+        if total_memory_mb < required_memory:
+            raise ValueError(
+                f"总内存不能小于现有进程重置所需的 {required_memory} MB。"
+            )
+        if total_io_devices < required_io:
+            raise ValueError(
+                f"I/O 总数不能小于现有进程重置所需的 {required_io} 个。"
+            )
+
         # 资源管理器内部先完成全部校验，避免部分更新。
         self.process_manager.resource_manager.configure_totals(
             total_memory_mb,
@@ -98,16 +110,35 @@ class SettingsService(QObject):
         if self._store is None:
             return
         resource = self.process_manager.resource_manager.resource
+
+        def read_int(key: str, default: int) -> int:
+            try:
+                return int(self._store.value(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        def read_float(key: str, default: float) -> float:
+            try:
+                return float(self._store.value(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        # 逐键独立读取与校验，单个损坏键只回退该项，不拖垮全部设置。
+        memory = read_int("resources/total_memory_mb", resource.total_memory_mb)
+        io_devices = read_int("resources/total_io_devices", resource.total_io_devices)
+        quantum = read_int("simulation/default_quantum", 2)
+        speed = read_float("simulation/default_speed", 1.0)
+        if not 1 <= quantum <= 20:
+            quantum = 2
+        if speed not in self.SPEEDS:
+            speed = 1.0
+
         try:
-            memory = int(self._store.value("resources/total_memory_mb", resource.total_memory_mb))
-            io_devices = int(self._store.value("resources/total_io_devices", resource.total_io_devices))
-            quantum = int(self._store.value("simulation/default_quantum", 2))
-            speed = float(self._store.value("simulation/default_speed", 1.0))
-            if not 1 <= quantum <= 20 or speed not in self.SPEEDS:
-                raise ValueError
             self.process_manager.resource_manager.configure_totals(memory, io_devices)
-        except (TypeError, ValueError):
-            return
+        except ValueError:
+            # 容量配置不合法（如小于已占用），保留当前值即可。
+            pass
+
         self.default_quantum = quantum
         self.default_speed = speed
         self.simulation_service.set_speed(speed)

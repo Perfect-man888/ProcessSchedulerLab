@@ -326,7 +326,7 @@ class SystemAnalysisPage(QWidget):
         title.setObjectName("SystemConclusionTitle")
         text = QLabel(
             "现代通用系统并非只使用单一 FCFS、RR 或 Priority，而是将抢占、公平、时间片、"
-            "实时策略、工作负载分组和能效约束组合。本项目的 7 种算法用于分离演示这些核心思想。"
+            "实时策略、工作负载分组和能效约束组合。本项目的 8 种算法用于分离演示这些核心思想。"
         )
         text.setObjectName("SystemConclusionText")
         text.setWordWrap(True)

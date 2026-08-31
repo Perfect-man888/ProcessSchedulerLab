@@ -114,6 +114,8 @@ class GanttChart(QWidget):
         )
 
     def _segment_color(self, segment: ScheduleSegment) -> QColor:
+        if segment.is_context_switch:
+            return QColor("#F97316")
         if segment.is_idle:
             return QColor("#98A2B3")
         index = sum(ord(char) for char in segment.pid) % len(self._COLORS)

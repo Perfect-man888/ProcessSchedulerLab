@@ -12,6 +12,9 @@ class SimulationEventType(str, Enum):
     ACTIVATE = "ACTIVATE"
     REVOKE = "REVOKE"
     FINISH = "FINISH"
+    CONTEXT_SWITCH = "CONTEXT_SWITCH"
+    IO_REQUEST = "IO_REQUEST"
+    IO_COMPLETE = "IO_COMPLETE"
     IDLE = "IDLE"
     PAUSE = "PAUSE"
     RESUME = "RESUME"
@@ -29,6 +32,9 @@ class SimulationEventType(str, Enum):
             SimulationEventType.ACTIVATE: "激活",
             SimulationEventType.REVOKE: "撤销",
             SimulationEventType.FINISH: "完成",
+            SimulationEventType.CONTEXT_SWITCH: "上下文切换",
+            SimulationEventType.IO_REQUEST: "I/O 请求",
+            SimulationEventType.IO_COMPLETE: "I/O 完成",
             SimulationEventType.IDLE: "CPU 空闲",
             SimulationEventType.PAUSE: "暂停",
             SimulationEventType.RESUME: "继续",

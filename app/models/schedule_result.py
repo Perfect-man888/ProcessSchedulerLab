@@ -16,6 +16,7 @@ class ProcessMetrics:
     start_time: int
     finish_time: int
     deadline: int | None = None
+    waiting_time_ticks: int | None = None
 
     def __post_init__(self):
         if not self.pid.strip():
@@ -32,6 +33,11 @@ class ProcessMetrics:
             raise ValueError("Deadline 必须大于到达时间。")
         if self.turnaround_time < self.burst_time:
             raise ValueError("完成时刻与服务时间不一致，等待时间不能为负。")
+        if self.waiting_time_ticks is not None:
+            if self.waiting_time_ticks < 0:
+                raise ValueError("等待时间不能为负。")
+            if self.waiting_time_ticks > self.turnaround_time - self.burst_time:
+                raise ValueError("等待时间不能超过未执行 CPU 的总时长。")
 
     @classmethod
     def from_process(cls, process: Process) -> "ProcessMetrics":
@@ -44,6 +50,7 @@ class ProcessMetrics:
             start_time=process.start_time,
             finish_time=process.finish_time,
             deadline=process.deadline,
+            waiting_time_ticks=process.waiting_time,
         )
 
     @property
@@ -56,6 +63,8 @@ class ProcessMetrics:
 
     @property
     def waiting_time(self) -> int:
+        if self.waiting_time_ticks is not None:
+            return self.waiting_time_ticks
         return self.turnaround_time - self.burst_time
 
     @property
@@ -95,24 +104,34 @@ class ScheduleResult:
                     raise ValueError("完整调度时间线必须连续，空闲时间应记录为 IDLE。")
 
         timeline_pids = {
-            segment.pid for segment in self.segments if segment.pid is not None
+            segment.pid
+            for segment in self.segments
+            if segment.pid is not None and not segment.is_context_switch
         }
-        if timeline_pids != set(pids):
-            raise ValueError("时间线中的进程与每进程指标必须完全一致。")
+        if not timeline_pids.issuperset(set(pids)):
+            raise ValueError("时间线中的进程必须包含全部已计量的进程指标。")
 
     @property
     def total_elapsed_ticks(self) -> int:
         return self.segments[-1].end if self.segments else 0
 
     @property
+    def context_switch_ticks(self) -> int:
+        return sum(segment.duration for segment in self.segments if segment.is_context_switch)
+
+    @property
     def busy_ticks(self) -> int:
         return sum(segment.duration for segment in self.segments if not segment.is_idle)
+
+    @property
+    def effective_busy_ticks(self) -> int:
+        return sum(segment.duration for segment in self.segments if segment.pid and not segment.is_context_switch)
 
     @property
     def cpu_utilization(self) -> float:
         if self.total_elapsed_ticks == 0:
             return 0.0
-        return self.busy_ticks / self.total_elapsed_ticks
+        return self.effective_busy_ticks / self.total_elapsed_ticks
 
     @property
     def throughput(self) -> float:
@@ -154,6 +173,19 @@ class ScheduleResult:
     @property
     def average_response_time(self) -> float:
         return self._average("response_time")
+
+    @property
+    def fairness_index(self) -> float:
+        """基于周转时间的 Jain's Fairness Index，范围 [0, 1]，越接近 1 越公平。"""
+        if not self.process_metrics:
+            return 0.0
+        values = [metrics.turnaround_time for metrics in self.process_metrics]
+        n = len(values)
+        total = sum(values)
+        squared_sum = sum(value * value for value in values)
+        if squared_sum == 0:
+            return 0.0
+        return (total * total) / (n * squared_sum)
 
     def _average(self, attribute: str) -> float:
         if not self.process_metrics:

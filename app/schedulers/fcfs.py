@@ -5,7 +5,7 @@ from app.schedulers.base import BaseScheduler, SchedulerCategory
 
 
 class FCFSScheduler(BaseScheduler):
-    """先来先服务：非抢占，按到达时间与 PID 稳定排序。"""
+    """先来先服务：非抢占，严格采用就绪队列的 FIFO 次序。"""
 
     name = "FCFS"
     category = SchedulerCategory.BATCH
@@ -20,4 +20,4 @@ class FCFSScheduler(BaseScheduler):
         candidates = self._ready_list(ready)
         if not candidates:
             return None
-        return min(candidates, key=self._arrival_pid_key)
+        return candidates[0]

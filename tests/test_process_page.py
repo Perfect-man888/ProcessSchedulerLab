@@ -1,10 +1,12 @@
+import pytest
+
 from app.models.process import ProcessState
 from app.services.export_service import ExportService
 from app.services.process_manager import ProcessManager
 from app.services.resource_manager import ResourceManager
 from app.services.simulation_service import SimulationService
 from app.ui.main_window import MainWindow
-from app.ui.process_page import CreateProcessDialog, ProcessPage
+from app.ui.process_page import CreateProcessDialog, ProcessPage, RandomProcessDialog
 from app.widgets.dialogs import MessageDialog
 from app.widgets.filter_combo import FilterCombo
 from app.widgets.number_input import NumberInput
@@ -66,6 +68,66 @@ def test_create_dialog_uses_configured_resource_limits(qapp):
 
     assert dialog.memory_input.maximum == 65536
     assert dialog.io_input.maximum == 128
+
+
+def test_random_dialog_configures_distribution_parameters(qapp):
+    manager = ProcessManager(ResourceManager())
+    dialog = RandomProcessDialog(manager)
+
+    dialog.count_input.setValue(5)
+    dialog.interval_input.setValue(2)
+    dialog.burst_min_input.setValue(2)
+    dialog.burst_max_input.setValue(6)
+    dialog.seed_toggle.setChecked(False)
+    config = dialog._config()
+
+    assert config.count == 5
+    assert config.arrival_rate == pytest.approx(0.5)
+    assert config.burst_min == 2
+    assert config.burst_max == 6
+    assert config.seed is None
+
+    dialog.seed_toggle.setChecked(True)
+    dialog.seed_input.setValue(99)
+    assert dialog._config().seed == 99
+
+    dialog.realtime_toggle.setChecked(True)
+    assert dialog._config().include_realtime
+
+
+def test_random_dialog_generates_and_adds_processes(qapp):
+    manager = ProcessManager(ResourceManager())
+    dialog = RandomProcessDialog(manager)
+
+    dialog.count_input.setValue(5)
+    dialog.interval_input.setValue(2)
+    dialog.burst_min_input.setValue(2)
+    dialog.burst_max_input.setValue(6)
+    dialog._generate()
+
+    assert len(manager.processes) == 5
+    assert all(2 <= process.burst_time <= 6 for process in manager.processes)
+    assert dialog.result() == dialog.DialogCode.Accepted
+
+
+def test_random_dialog_rejects_insufficient_memory(qapp, monkeypatch):
+    resources = ResourceManager()
+    resources.configure_totals(256, 8)
+    manager = ProcessManager(resources)
+    dialog = RandomProcessDialog(manager)
+    dialog.count_input.setValue(5)
+    errors = []
+    monkeypatch.setattr(
+        MessageDialog,
+        "show_error",
+        lambda parent, title, message: errors.append((title, message)),
+    )
+
+    dialog._generate()
+
+    assert errors and "内存不足" in errors[0][0]
+    assert len(manager.processes) == 0
+    assert dialog.result() != dialog.DialogCode.Accepted
 
 
 def test_process_page_refreshes_table_and_state_badge(qapp):

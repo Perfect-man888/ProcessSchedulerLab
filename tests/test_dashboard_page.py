@@ -1,4 +1,5 @@
 from app.models.process import ProcessState
+from app.schedulers.registry import SCHEDULER_FACTORIES
 from app.services.process_manager import ProcessManager
 from app.services.resource_manager import ResourceManager
 from app.services.simulation_service import SimulationService
@@ -118,3 +119,13 @@ def test_dashboard_reads_live_simulation_state(qapp):
     assert page.status_label.text() == "●  Simulation Paused"
     assert page.timeline_layout.count() == 1
     assert page.timeline_layout.itemAt(0).widget().text() == "P001\n0–1"
+
+
+def test_dashboard_reports_registered_algorithm_count(qapp):
+    """算法数量文案必须与调度器注册表一致，不能回退为硬编码旧值。"""
+    manager = ProcessManager(ResourceManager())
+    page = DashboardPage(manager)
+
+    assert page.info_values["Algorithms"].text() == (
+        f"{len(SCHEDULER_FACTORIES)} implemented"
+    )

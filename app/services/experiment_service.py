@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 
 from app.models.experiment_result import AlgorithmSkip, ExperimentReport
 from app.models.process import Process
+from app.models.schedule_result import ScheduleResult
 from app.models.simulation_state import SimulationStatus
 from app.schedulers.registry import SCHEDULER_FACTORIES
 from app.services.process_manager import ProcessManager
@@ -144,6 +145,7 @@ class ExperimentService(QObject):
         "priority": "Priority",
         "round_robin": "Round Robin",
         "edf": "EDF",
+        "rms": "RMS",
         "mlfq": "MLFQ",
     }
 
@@ -178,6 +180,11 @@ class ExperimentService(QObject):
                     AlgorithmSkip(key, display_name, "存在未填写 Deadline 的进程")
                 )
                 continue
+            if key == "rms" and any(process.period is None for process in source):
+                skipped.append(
+                    AlgorithmSkip(key, display_name, "存在未填写 Period 的进程")
+                )
+                continue
 
             options = {}
             if key == "round_robin":
@@ -192,9 +199,7 @@ class ExperimentService(QObject):
             manager = self._clone_manager(source)
             simulation = SimulationService(manager)
             simulation.load(key, **options)
-            limit = max(process.arrival_time for process in source) + sum(
-                process.burst_time for process in source
-            ) + 100
+            limit = self._safe_tick_limit(source)
             ticks = 0
             while simulation.state.status is not SimulationStatus.FINISHED:
                 if should_cancel is not None and should_cancel():
@@ -222,6 +227,62 @@ class ExperimentService(QObject):
         self.completed.emit(report)
         return report
 
+    def run_quantum_scan(
+        self,
+        processes: Iterable[Process],
+        *,
+        quantum_range: Iterable[int] = range(1, 9),
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> tuple[tuple[int, ScheduleResult], ...]:
+        """固定数据集上扫描 RR 时间片，返回 (quantum, 结果) 的有序序列。
+
+        quantum 越小时间片切换越频繁，时延与切换开销随 quantum 增长而
+        呈现不同的权衡曲线，用于观察 RR 量子对系统行为的影响。
+        """
+        source = tuple(processes)
+        if not source:
+            raise ValueError("实验数据集不能为空。")
+        quanta = tuple(quantum_range)
+        if not quanta or any(quantum <= 0 for quantum in quanta):
+            raise ValueError("RR 时间片扫描范围必须为正整数。")
+
+        limit = self._safe_tick_limit(source)
+        scanned: list[tuple[int, ScheduleResult]] = []
+        total = len(quanta)
+        for index, quantum in enumerate(quanta, start=1):
+            if should_cancel is not None and should_cancel():
+                raise ExperimentCancelled("实验已取消。")
+            self.progress.emit(round((index - 1) / total * 100), f"RR q={quantum}")
+
+            manager = self._clone_manager(source)
+            simulation = SimulationService(manager)
+            simulation.load("round_robin", quantum=quantum)
+            ticks = 0
+            while simulation.state.status is not SimulationStatus.FINISHED:
+                if should_cancel is not None and should_cancel():
+                    raise ExperimentCancelled("实验已取消。")
+                if not simulation.step():
+                    raise RuntimeError(f"RR q={quantum} 未能继续推进。")
+                ticks += 1
+                if ticks > limit:
+                    raise RuntimeError(f"RR q={quantum} 超过安全 Tick 上限。")
+            scanned.append((quantum, simulation.build_result()))
+
+        self.progress.emit(100, "完成")
+        return tuple(scanned)
+
+    @staticmethod
+    def _safe_tick_limit(source: tuple[Process, ...]) -> int:
+        """估算仿真推进的安全上限：到达时刻 + 总服务时间 + I/O 阻塞预算 + 余量。"""
+        io_budget = sum(
+            ((process.burst_time - 1) // process.io_interval) * process.io_duration
+            for process in source
+            if process.io_interval is not None and process.io_duration is not None
+        )
+        return max(process.arrival_time for process in source) + sum(
+            process.burst_time for process in source
+        ) + io_budget + 100
+
     @staticmethod
     def _clone_manager(source: tuple[Process, ...]) -> ProcessManager:
         resources = ResourceManager()
@@ -243,5 +304,7 @@ class ExperimentService(QObject):
                 period=process.period,
                 memory_mb=process.memory_mb,
                 io_devices=process.io_devices,
+                io_interval=process.io_interval,
+                io_duration=process.io_duration,
             )
         return manager

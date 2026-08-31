@@ -108,6 +108,20 @@ def test_process_metrics_can_be_created_from_finished_process():
     assert metrics.response_time == 1
 
 
+def test_process_metrics_preserve_explicit_ready_waiting_time():
+    metrics = ProcessMetrics(
+        "P001",
+        arrival_time=0,
+        burst_time=2,
+        start_time=0,
+        finish_time=4,
+        waiting_time_ticks=0,
+    )
+
+    assert metrics.turnaround_time == 4
+    assert metrics.waiting_time == 0
+
+
 def test_process_metrics_reject_unfinished_or_impossible_process():
     process = Process(
         pid="P001",
@@ -152,6 +166,44 @@ def test_schedule_result_aggregates_deterministic_fcfs_metrics():
     assert result.average_response_time == pytest.approx(10 / 3)
     assert result.average_weighted_turnaround_time == pytest.approx(31 / 9)
     assert result.context_switches == 2
+
+
+def test_schedule_result_fairness_index():
+    # 两个进程周转时间 1 和 2：JFI = (1+2)^2 / (2*(1+4)) = 9/10 = 0.9
+    result = ScheduleResult(
+        algorithm_name="FCFS",
+        segments=(
+            ScheduleSegment(0, 1, "P001"),
+            ScheduleSegment(1, 2, "P002"),
+        ),
+        process_metrics=(
+            ProcessMetrics("P001", 0, 1, 0, 1),
+            ProcessMetrics("P002", 0, 1, 1, 2),
+        ),
+    )
+
+    assert result.fairness_index == pytest.approx(0.9)
+
+
+def test_schedule_result_fairness_index_edge_cases():
+    # 完全公平（所有周转时间相同）时 JFI = 1
+    fair = ScheduleResult(
+        algorithm_name="RR",
+        segments=(ScheduleSegment(0, 2, "P001"), ScheduleSegment(2, 4, "P002")),
+        process_metrics=(
+            ProcessMetrics("P001", 0, 1, 0, 2),
+            ProcessMetrics("P002", 2, 1, 2, 4),
+        ),
+    )
+    assert fair.fairness_index == pytest.approx(1.0)
+
+    # 无进程指标时返回 0
+    empty = ScheduleResult(
+        algorithm_name="FCFS",
+        segments=(),
+        process_metrics=(),
+    )
+    assert empty.fairness_index == 0.0
 
 
 def test_schedule_result_counts_idle_and_deadline_misses():
@@ -220,3 +272,10 @@ def test_simulation_state_tracks_runtime_and_resets():
     assert state.status is SimulationStatus.IDLE
     assert state.cpu_utilization == 0.0
     assert state.is_complete
+
+
+def test_simulation_state_is_not_complete_while_process_is_blocked():
+    process = Process("P001", "I/O", 0, 2, 1)
+    state = SimulationState(blocked_processes=[process])
+
+    assert not state.is_complete

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.process import ProcessState
+from app.schedulers.registry import SCHEDULER_FACTORIES
 from app.services.process_manager import ProcessManager
 from app.services.simulation_service import SimulationService
 from app.styles.theme import COLORS, TOTAL_IO_DEVICES, TOTAL_MEMORY_MB
@@ -311,6 +312,16 @@ class DashboardPage(QWidget):
 
         layout.addLayout(
             self._state_row(
+                ProcessState.BLOCKED,
+                COLORS["blocked"],
+                "Blocked",
+                "等待 I/O 完成",
+                "0",
+            )
+        )
+
+        layout.addLayout(
+            self._state_row(
                 ProcessState.SUSPENDED,
                 COLORS["suspended"],
                 "Suspended",
@@ -568,7 +579,7 @@ class DashboardPage(QWidget):
         layout.addLayout(
             self._info_row(
                 "Algorithms",
-                "7 planned",
+                f"{len(SCHEDULER_FACTORIES)} implemented",
             )
         )
 

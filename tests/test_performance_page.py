@@ -48,7 +48,7 @@ def test_preset_runs_all_algorithms_and_populates_analysis(qapp):
     assert page.table.rowCount() == 7
     assert page.algorithm_card.value_label.text() == "7"
     assert page.status_label.text() == "●  比较完成"
-    assert page.skip_label.text() == "全部 7 种算法已完成"
+    assert page.skip_label.text() == "跳过 RMS"
     assert len(page.latency_chart.figure.axes[0].patches) == 21
     assert len(page.system_chart.figure.axes[0].patches) == 7
     assert page.observation_layout.count() >= 5
@@ -63,7 +63,7 @@ def test_current_dataset_skips_edf_and_preserves_processes(qapp):
     assert page.run_comparison()
 
     assert len(page.report.results) == 6
-    assert page.skip_label.text() == "跳过 EDF"
+    assert page.skip_label.text() == "跳过 EDF · 跳过 RMS"
     assert page.table.rowCount() == 6
     assert before == [(p.pid, p.state, p.remaining_time) for p in manager.processes]
     assert first.start_time is None
@@ -156,3 +156,88 @@ def test_performance_page_supports_aging_and_background_run(qapp):
     assert any("+ Aging" in result.algorithm_name for result in page.report.results)
     assert page.status_label.text() == "●  比较完成"
     assert page._thread is None
+
+
+def test_performance_page_runs_quantum_scan_in_background(qapp):
+    manager, page = make_page()
+    page.dataset_combo.setCurrentIndex(1)
+    page.start_quantum_scan()
+    assert page._thread is not None
+    assert not page.cancel_button.isHidden()
+
+    loop = QEventLoop()
+    thread = page._thread
+    thread.finished.connect(loop.quit)
+    QTimer.singleShot(8000, loop.quit)
+    loop.exec()
+    qapp.processEvents()
+
+    assert page._thread is None
+    assert page.status_label.text() == "●  扫描完成"
+    assert "Quantum=" in page.quantum_observation.text()
+    # 扫描图应绘制出曲线（主坐标轴两条折线）
+    assert len(page.quantum_chart.figure.axes[0].lines) == 2
+
+
+def test_switching_dataset_clears_previous_analysis(qapp):
+    manager, page = make_page()
+    page.dataset_combo.setCurrentIndex(1)
+    assert page.run_comparison()
+    assert page.table.rowCount() > 0
+    assert page.export_csv_button.isEnabled()
+
+    page.dataset_combo.setCurrentIndex(0)
+
+    assert page.report is None
+    assert page.table.rowCount() == 0
+    assert page.skip_label.text() == "尚未运行"
+    assert page.quantum_observation.text() == "尚未运行 RR 时间片扫描。"
+    assert page.algorithm_card.value_label.text() == "—"
+    assert not page.export_csv_button.isEnabled()
+    assert not page.export_charts_button.isEnabled()
+    assert not page.export_pdf_button.isEnabled()
+
+
+def test_async_callbacks_are_ignored_after_window_closed(qapp):
+    manager, page = make_page()
+    page._closed = True
+
+    # 窗口关闭后线程兜底信号回传，不得再触碰已销毁的 UI 状态。
+    page._on_async_success(object())
+    page._on_async_failure("boom")
+
+    assert page.report is None
+    assert page.status_label.text() == "●  等待实验"
+    assert page.table.rowCount() == 0
+
+
+def test_shutdown_worker_reaps_thread_and_clears_references(qapp):
+    manager = ProcessManager(ResourceManager())
+    manager.create_process(
+        name="Worker", arrival_time=0, burst_time=1, priority=1,
+        memory_mb=64, io_devices=0,
+    )
+    page = PerformancePage(manager, ExperimentService())
+    page.start_comparison()
+    assert page._thread is not None
+
+    page.shutdown_worker()
+
+    assert page._closed
+    assert page._worker is None
+    assert page._thread is None
+
+
+def test_main_window_close_stops_simulation_timer(qapp):
+    window = MainWindow()
+    window.process_manager.create_process(
+        name="Worker", arrival_time=0, burst_time=5, priority=1,
+        memory_mb=64, io_devices=0,
+    )
+    window.simulation_service.load("fcfs")
+    window.simulation_service.start()
+    assert window.simulation_service.timer.isActive()
+
+    window.close()
+
+    assert not window.simulation_service.timer.isActive()

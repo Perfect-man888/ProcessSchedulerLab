@@ -1,6 +1,8 @@
 import pytest
 from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import QLabel
 
+from app.schedulers.registry import SCHEDULER_FACTORIES
 from app.ui.main_window import MainWindow
 from app.ui.system_analysis_page import SYSTEM_PROFILES, SystemAnalysisPage
 
@@ -50,3 +52,11 @@ def test_main_window_uses_real_system_analysis_page(qapp):
     assert isinstance(window.stack.widget(4), SystemAnalysisPage)
 
     window.close()
+
+
+def test_conclusion_mentions_registered_algorithm_count(qapp):
+    """结论文案中的算法数量必须与注册表一致，防止回退为旧的 7 种。"""
+    page = SystemAnalysisPage()
+    conclusion = page.findChild(QLabel, "SystemConclusionText").text()
+
+    assert f"本项目的 {len(SCHEDULER_FACTORIES)} 种算法" in conclusion

@@ -124,6 +124,7 @@ class HelpAboutPage(QWidget):
             ("Priority", "通用", "可选", "优先级 + Aging", "体现等级与饥饿"),
             ("Round Robin", "分时", "时间片", "FIFO 轮转", "交互响应好"),
             ("EDF", "实时", "抢占", "最早 Deadline", "直接关注截止期"),
+            ("RMS", "实时", "抢占", "最短周期优先", "静态优先级，适合周期任务"),
             ("MLFQ", "高级分时", "抢占", "多级队列反馈", "兼顾交互与批处理"),
         )
         table = QTableWidget(len(rows), 5)

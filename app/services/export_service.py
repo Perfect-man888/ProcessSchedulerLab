@@ -14,6 +14,12 @@ class ExportService:
 
     DATASET_SCHEMA = "process-scheduler-lab.dataset"
     DATASET_VERSION = 1
+    REPORT_SCOPE_TEXT = (
+        "口径：当前采用单 CPU、离散 Tick、单次作业模型；"
+        "等待时间为进程处于 READY 状态的累计 Tick，周转时间为完成时刻减到达时刻；"
+        "CPU 利用率为实际执行进程的 Tick / 总 Tick，切换开销计入分母。"
+        "Period 作为周期任务扩展元数据保存，不自动重复释放任务。"
+    )
 
     @classmethod
     def save_dataset_json(
@@ -67,11 +73,17 @@ class ExportService:
                     period=cls._optional_integer(record, "period", minimum=1),
                     memory_mb=cls._integer(record, "memory_mb", minimum=1),
                     io_devices=cls._integer(record, "io_devices", minimum=0),
+                    io_interval=cls._optional_integer(record, "io_interval", minimum=1),
+                    io_duration=cls._optional_integer(record, "io_duration", minimum=1),
                 )
             except ValueError as error:
                 raise ValueError(f"第 {index} 个进程记录无效：{error}") from error
             if process.deadline is not None and process.deadline <= process.arrival_time:
                 raise ValueError(f"第 {index} 个进程的 Deadline 必须大于到达时间。")
+            if (process.io_interval is None) != (process.io_duration is None):
+                raise ValueError(
+                    f"第 {index} 个进程的 io_interval 与 io_duration 必须同时提供或同时为空。"
+                )
             processes.append(process)
 
         pids = [process.pid for process in processes]
@@ -359,8 +371,7 @@ class ExportService:
                 )
             story.append(
                 Paragraph(
-                    "口径：当前采用单 CPU、离散 Tick、单次作业模型；等待时间 = 周转时间 - 服务时间，"
-                    "CPU 利用率 = 忙碌 Tick / 总 Tick。Period 作为周期任务扩展元数据保存，不自动重复释放任务。",
+                    cls.REPORT_SCOPE_TEXT,
                     body_style,
                 )
             )
@@ -426,6 +437,8 @@ class ExportService:
             "period": process.period,
             "memory_mb": process.memory_mb,
             "io_devices": process.io_devices,
+            "io_interval": process.io_interval,
+            "io_duration": process.io_duration,
         }
 
     @staticmethod
