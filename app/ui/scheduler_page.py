@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -26,6 +27,7 @@ from app.services.simulation_service import SimulationService
 from app.styles.theme import COLORS
 from app.widgets.dialogs import MessageDialog
 from app.widgets.filter_combo import FilterCombo
+from app.widgets.flow_layout import FlowLayout
 from app.widgets.gantt_chart import GanttChart
 from app.widgets.number_input import NumberInput
 from app.widgets.stat_card import StatCard
@@ -179,30 +181,32 @@ class SchedulerPage(QWidget):
         heading.addWidget(self.process_hint)
         layout.addLayout(heading)
 
-        config = QHBoxLayout()
+        config = QGridLayout()
         config.setSpacing(12)
         self.algorithm_combo = FilterCombo()
         self.algorithm_combo.setObjectName("SchedulerCombo")
         self.algorithm_combo.addItems([name for name, _ in self.ALGORITHMS])
-        config.addWidget(self._field("调度算法", self.algorithm_combo), 3)
+        config.addWidget(self._field("调度算法", self.algorithm_combo), 0, 0)
 
         self.parameter_stack = QStackedWidget()
         self.parameter_stack.setObjectName("ParameterStack")
         self.parameter_stack.setFixedHeight(66)
         self._build_parameter_pages()
-        config.addWidget(self.parameter_stack, 3)
+        config.addWidget(self.parameter_stack, 0, 1)
 
         self.speed_combo = FilterCombo()
         self.speed_combo.setObjectName("SchedulerCombo")
         self.speed_combo.addItems([name for name, _ in self.SPEEDS])
         self.speed_combo.setCurrentIndex(1)
-        config.addWidget(self._field("仿真速度", self.speed_combo), 1)
+        config.addWidget(self._field("仿真速度", self.speed_combo), 1, 0)
 
         self.switch_cost_combo = FilterCombo()
         self.switch_cost_combo.setObjectName("SchedulerCombo")
         self.switch_cost_combo.addItems([name for name, _ in SWITCH_COSTS])
         self.switch_cost_combo.currentIndexChanged.connect(self._on_switch_cost_changed)
-        config.addWidget(self._field("上下文切换开销", self.switch_cost_combo), 1)
+        config.addWidget(self._field("上下文切换开销", self.switch_cost_combo), 1, 1)
+        config.setColumnStretch(0, 2)
+        config.setColumnStretch(1, 3)
         layout.addLayout(config)
 
         actions = QHBoxLayout()
@@ -225,11 +229,14 @@ class SchedulerPage(QWidget):
             self.reset_button,
         ):
             actions.addWidget(button)
-        actions.addStretch()
         self.loaded_algorithm_label = QLabel("当前算法：—")
         self.loaded_algorithm_label.setObjectName("LoadedAlgorithmLabel")
-        actions.addWidget(self.loaded_algorithm_label)
         layout.addLayout(actions)
+        layout.addWidget(
+            self.loaded_algorithm_label,
+            0,
+            Qt.AlignmentFlag.AlignLeft,
+        )
         return panel
 
     def _build_parameter_pages(self) -> None:
@@ -356,8 +363,7 @@ class SchedulerPage(QWidget):
         ready_layout.setContentsMargins(0, 0, 0, 0)
         ready_layout.setSpacing(7)
         ready_layout.addWidget(self._small_label("READY QUEUE"))
-        self.ready_queue_layout = QHBoxLayout()
-        self.ready_queue_layout.setSpacing(7)
+        self.ready_queue_layout = FlowLayout()
         ready_layout.addLayout(self.ready_queue_layout)
         layout.addWidget(self.ready_queue_widget)
 
@@ -368,21 +374,18 @@ class SchedulerPage(QWidget):
         self.mlfq_queue_layouts = []
         for level in range(3):
             mlfq_layout.addWidget(self._small_label(f"Q{level} · LEVEL {level}"))
-            queue_layout = QHBoxLayout()
-            queue_layout.setSpacing(7)
+            queue_layout = FlowLayout()
             self.mlfq_queue_layouts.append(queue_layout)
             mlfq_layout.addLayout(queue_layout)
         self.mlfq_queue_widget.hide()
         layout.addWidget(self.mlfq_queue_widget)
 
         layout.addWidget(self._small_label("等待 I/O / BLOCKED"))
-        self.blocked_queue_layout = QHBoxLayout()
-        self.blocked_queue_layout.setSpacing(7)
+        self.blocked_queue_layout = FlowLayout()
         layout.addLayout(self.blocked_queue_layout)
 
         layout.addWidget(self._small_label("尚未到达 / NEW"))
-        self.new_queue_layout = QHBoxLayout()
-        self.new_queue_layout.setSpacing(7)
+        self.new_queue_layout = FlowLayout()
         layout.addLayout(self.new_queue_layout)
         layout.addStretch()
         return panel
@@ -623,7 +626,7 @@ class SchedulerPage(QWidget):
 
     @staticmethod
     def _fill_queue(
-        layout: QHBoxLayout,
+        layout: FlowLayout,
         processes: list[Process],
         empty: str,
         detail=None,
@@ -644,7 +647,6 @@ class SchedulerPage(QWidget):
                 label.setObjectName("QueueToken")
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 layout.addWidget(label)
-        layout.addStretch()
 
     def _refresh_events(self) -> None:
         events = list(reversed(self.simulation_service.state.events[-50:]))

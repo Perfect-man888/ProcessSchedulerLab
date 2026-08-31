@@ -76,7 +76,7 @@ def test_round_robin_controls_drive_service_and_live_views(qapp):
     assert page.run_status_label.text() == "●  实验就绪"
     assert page.start_button.isEnabled()
     assert page.step_button.isEnabled()
-    assert page.ready_queue_layout.count() == 3  # 两个 Token + stretch
+    assert page.ready_queue_layout.count() == 2
 
     assert page.step_simulation()
 
@@ -174,14 +174,14 @@ def test_mlfq_ready_processes_are_split_into_three_visible_queues(qapp):
     assert page.mlfq_queue_widget.isVisibleTo(page)
     assert not page.ready_queue_widget.isVisibleTo(page)
     assert "队列层级" in page.queue_rule_label.text()
-    assert page.mlfq_queue_layouts[0].count() == 3
-    assert page.mlfq_queue_layouts[1].count() == 2  # 空态文案 + stretch
-    assert page.mlfq_queue_layouts[2].count() == 2
+    assert page.mlfq_queue_layouts[0].count() == 2
+    assert page.mlfq_queue_layouts[1].count() == 1
+    assert page.mlfq_queue_layouts[2].count() == 1
 
     service.scheduler.on_preempt(first, 0, PreemptionReason.TIME_SLICE)
     page.refresh()
-    assert page.mlfq_queue_layouts[0].count() == 2
-    assert page.mlfq_queue_layouts[1].count() == 2
+    assert page.mlfq_queue_layouts[0].count() == 1
+    assert page.mlfq_queue_layouts[1].count() == 1
     assert "P001" in page.mlfq_queue_layouts[1].itemAt(0).widget().text()
 
 
@@ -207,6 +207,19 @@ def test_rms_queue_is_visualized_in_period_order(qapp):
     assert "Period" in page.queue_rule_label.text()
     assert "P002" in page.ready_queue_layout.itemAt(0).widget().text()
     assert "T=5" in page.ready_queue_layout.itemAt(0).widget().text()
+
+
+def test_queue_tokens_wrap_instead_of_widening_the_page(qapp):
+    manager, service, page = make_page()
+    for index in range(12):
+        add_process(manager, f"Worker-{index}", arrival=index + 1, burst=2)
+
+    assert page.load_experiment()
+    narrow_height = page.new_queue_layout.heightForWidth(520)
+    wide_height = page.new_queue_layout.heightForWidth(1800)
+
+    assert page.new_queue_layout.count() == 12
+    assert narrow_height > wide_height
 
 
 def test_gantt_chart_scales_for_long_timelines(qapp):

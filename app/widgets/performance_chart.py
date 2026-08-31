@@ -13,10 +13,10 @@ class PerformanceChart(FigureCanvasQTAgg):
         if mode not in {"latency", "system"}:
             raise ValueError("未知性能图模式。")
         self.mode = mode
-        self.figure = Figure(figsize=(6.0, 3.3), dpi=100)
+        self.figure = Figure(figsize=(6.0, 3.45), dpi=100)
         super().__init__(self.figure)
         self.setParent(parent)
-        self.setMinimumHeight(285)
+        self.setMinimumHeight(310)
         self.update_results(())
 
     def update_results(self, results: tuple[ScheduleResult, ...]) -> None:
@@ -39,7 +39,7 @@ class PerformanceChart(FigureCanvasQTAgg):
             self._draw_latency(axis, results)
         else:
             self._draw_system(axis, results)
-        self.figure.tight_layout(pad=1.7)
+        self.figure.tight_layout(rect=(0.01, 0.01, 0.99, 0.88), pad=1.25)
         self.draw_idle()
 
     def _draw_latency(self, axis, results: tuple[ScheduleResult, ...]) -> None:
@@ -53,10 +53,20 @@ class PerformanceChart(FigureCanvasQTAgg):
         )
         for offset, ((label, values), color) in enumerate(zip(series, self.COLORS)):
             positions = [value + (offset - 1) * width for value in x]
-            axis.bar(positions, values, width, label=label, color=color, alpha=0.9)
+            axis.bar(
+                positions,
+                values,
+                width,
+                label=label,
+                color=color,
+                alpha=0.84,
+                edgecolor="none",
+            )
         self._style_axis(axis, names, x)
+        upper = max(max(values) for _, values in series)
+        axis.set_ylim(0, upper * 1.16 if upper else 1)
         axis.set_ylabel("Average ticks", color="#667085", fontsize=8)
-        axis.legend(frameon=False, fontsize=8, ncol=3, loc="upper center")
+        self._legend(axis, ncol=3)
 
     def _draw_system(self, axis, results: tuple[ScheduleResult, ...]) -> None:
         names = [self._short_name(result.algorithm_name) for result in results]
@@ -65,6 +75,7 @@ class PerformanceChart(FigureCanvasQTAgg):
         utilization = [result.cpu_utilization * 100 for result in results]
         throughput = [result.throughput * 100 for result in results]
         axis.bar(x, switches, width=0.56, color="#8B5CF6", alpha=0.88, label="Switches")
+        axis.set_ylim(0, max(switches) * 1.18 if max(switches, default=0) else 1)
         axis.set_ylabel("Context switches", color="#667085", fontsize=8)
         self._style_axis(axis, names, x)
 
@@ -86,7 +97,7 @@ class PerformanceChart(FigureCanvasQTAgg):
             linewidth=1.7,
             label="Throughput x100",
         )
-        right.set_ylim(0, 108)
+        right.set_ylim(0, 116)
         right.set_ylabel("CPU use (%) / Throughput x100", color="#667085", fontsize=8)
         right.tick_params(colors="#98A2B3", labelsize=7)
         right.spines["top"].set_visible(False)
@@ -97,10 +108,18 @@ class PerformanceChart(FigureCanvasQTAgg):
         axis.legend(
             handles1 + handles2,
             labels1 + labels2,
-            frameon=False,
-            fontsize=8,
-            ncol=2,
+            frameon=True,
+            fancybox=True,
+            framealpha=1,
+            facecolor="#FFFFFF",
+            edgecolor="#E7ECF3",
+            fontsize=7.5,
+            ncol=3,
             loc="upper center",
+            bbox_to_anchor=(0.5, 1.19),
+            borderpad=0.55,
+            columnspacing=1.1,
+            handlelength=1.8,
         )
 
     @staticmethod
@@ -114,6 +133,23 @@ class PerformanceChart(FigureCanvasQTAgg):
         axis.spines["right"].set_visible(False)
         axis.spines["left"].set_color("#E7ECF3")
         axis.spines["bottom"].set_color("#E7ECF3")
+
+    @staticmethod
+    def _legend(axis, *, ncol: int) -> None:
+        axis.legend(
+            frameon=True,
+            fancybox=True,
+            framealpha=1,
+            facecolor="#FFFFFF",
+            edgecolor="#E7ECF3",
+            fontsize=7.5,
+            ncol=ncol,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.18),
+            borderpad=0.55,
+            columnspacing=1.25,
+            handlelength=1.8,
+        )
 
     @staticmethod
     def _short_name(name: str) -> str:
