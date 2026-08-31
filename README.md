@@ -48,3 +48,4 @@ GitHub Actions 会在 Windows + Python 3.11.9 环境中自动执行相同的静�
 - `app/ui` 与 `app/widgets`：主页面和可复用可视化组件。
 - `tests`：自动化单元、集成和 UI 冒烟测试。
 - `docs/screenshots`：各阶段界面验收截图。
+- `docs/ProcessSchedulerLab_使用说明书.docx`：安装、操作、实验、导出、排错和答辩演示的完整使用手册。
