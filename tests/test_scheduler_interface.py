@@ -7,9 +7,9 @@ from app.schedulers import (
     MLFQScheduler,
     PriorityScheduler,
     RoundRobinScheduler,
+    SchedulerCategory,
     SJFScheduler,
     SRTFScheduler,
-    SchedulerCategory,
     create_scheduler,
 )
 

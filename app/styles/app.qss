@@ -160,17 +160,14 @@ QLabel#StagePill {
    ============================================================ */
 
 QFrame#StatCard,
-QFrame#Panel,
-QFrame#PlaceholderHero,
-QFrame#MiniFeatureCard {
+QFrame#Panel {
     background-color: #FFFFFF;
 
     border: 1px solid #E7ECF3;
     border-radius: 16px;
 }
 
-QFrame#StatCard:hover,
-QFrame#MiniFeatureCard:hover {
+QFrame#StatCard:hover {
     border: 1px solid #D6DEEB;
 }
 
@@ -349,49 +346,6 @@ QLabel#InfoKey {
 QLabel#InfoValue {
     color: #344054;
     font-size: 10px;
-    font-weight: 600;
-}
-
-
-/* ============================================================
-   Placeholder Pages
-   ============================================================ */
-
-QLabel#PlaceholderIcon {
-    color: #4F6EF7;
-
-    font-size: 34px;
-    font-weight: 700;
-}
-
-QLabel#PlaceholderTitle {
-    color: #172033;
-
-    font-size: 21px;
-    font-weight: 700;
-}
-
-QLabel#PlaceholderText {
-    color: #667085;
-
-    font-size: 11px;
-}
-
-QFrame#MiniFeatureCard {
-    min-height: 115px;
-}
-
-QLabel#FeatureNumber {
-    color: #4F6EF7;
-
-    font-size: 11px;
-    font-weight: 700;
-}
-
-QLabel#FeatureName {
-    color: #344054;
-
-    font-size: 12px;
     font-weight: 600;
 }
 

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -10,6 +11,7 @@ from app.schedulers.registry import SCHEDULER_FACTORIES
 from app.services.process_manager import ProcessManager
 from app.services.resource_manager import ResourceManager
 from app.services.simulation_service import SimulationService
+from app.styles.theme import TOTAL_IO_DEVICES, TOTAL_MEMORY_MB
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +126,10 @@ EXPERIMENT_PRESETS = (
 )
 
 
+class ExperimentCancelled(RuntimeError):
+    """用户主动取消批量实验。"""
+
+
 class ExperimentService(QObject):
     """在隔离副本上批量运行算法，保证当前交互仿真不被修改。"""
 
@@ -148,8 +154,10 @@ class ExperimentService(QObject):
         dataset_name: str = "当前进程集",
         rr_quantum: int = 2,
         priority_preemptive: bool = True,
+        priority_aging_interval: int | None = None,
         mlfq_quanta: tuple[int, ...] = (1, 2, 4),
         mlfq_boost_interval: int = 10,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> ExperimentReport:
         source = tuple(processes)
         if not source:
@@ -161,6 +169,8 @@ class ExperimentService(QObject):
         skipped = []
         total = len(self.DEFAULT_ALGORITHMS)
         for index, key in enumerate(self.DEFAULT_ALGORITHMS, start=1):
+            if should_cancel is not None and should_cancel():
+                raise ExperimentCancelled("实验已取消。")
             display_name = self.DISPLAY_NAMES[key]
             self.progress.emit(round((index - 1) / total * 100), display_name)
             if key == "edf" and any(process.deadline is None for process in source):
@@ -174,6 +184,7 @@ class ExperimentService(QObject):
                 options["quantum"] = rr_quantum
             elif key == "priority":
                 options["preemptive"] = priority_preemptive
+                options["aging_interval"] = priority_aging_interval
             elif key == "mlfq":
                 options["quanta"] = mlfq_quanta
                 options["boost_interval"] = mlfq_boost_interval
@@ -186,6 +197,8 @@ class ExperimentService(QObject):
             ) + 100
             ticks = 0
             while simulation.state.status is not SimulationStatus.FINISHED:
+                if should_cancel is not None and should_cancel():
+                    raise ExperimentCancelled("实验已取消。")
                 if not simulation.step():
                     raise RuntimeError(f"{display_name} 未能继续推进。")
                 ticks += 1
@@ -193,14 +206,32 @@ class ExperimentService(QObject):
                     raise RuntimeError(f"{display_name} 超过安全 Tick 上限。")
             results.append(simulation.build_result())
 
-        report = ExperimentReport(dataset_name, tuple(results), tuple(skipped))
+        report = ExperimentReport(
+            dataset_name,
+            tuple(results),
+            tuple(skipped),
+            (
+                ("RR Quantum", str(rr_quantum)),
+                ("Priority Mode", "Preemptive" if priority_preemptive else "Non-preemptive"),
+                ("Priority Aging", f"{priority_aging_interval} Tick" if priority_aging_interval else "Off"),
+                ("MLFQ Quanta", "/".join(str(value) for value in mlfq_quanta)),
+                ("MLFQ Boost", f"{mlfq_boost_interval} Tick"),
+            ),
+        )
         self.progress.emit(100, "完成")
         self.completed.emit(report)
         return report
 
     @staticmethod
     def _clone_manager(source: tuple[Process, ...]) -> ProcessManager:
-        manager = ProcessManager(ResourceManager())
+        resources = ResourceManager()
+        # 性能实验是 CPU 调度隔离副本，不应被默认 8192 MB / 8 I/O
+        # 意外拒绝；容量至少覆盖源数据集已经合法占用的资源。
+        resources.configure_totals(
+            max(TOTAL_MEMORY_MB, sum(process.memory_mb for process in source)),
+            max(TOTAL_IO_DEVICES, sum(process.io_devices for process in source)),
+        )
+        manager = ProcessManager(resources)
         for process in source:
             manager.create_process(
                 pid=process.pid,

@@ -6,15 +6,16 @@
 
 - PCB 全生命周期管理：创建、挂起、激活、撤销、搜索与状态筛选。
 - 内存与 I/O 资源容量校验、原子分配和释放。
-- FCFS、SJF、SRTF、抢占/非抢占 Priority、Round Robin、EDF 和三级 MLFQ；Priority 支持可配置 Aging，避免低优先级进程长期饥饿。
+- FCFS、SJF、SRTF、抢占/非抢占 Priority、Round Robin、EDF 和三级 MLFQ；Priority 支持可配置 Aging，避免低优先级进程长期饥饿，并可纳入批量实验对比。
 - 启动、暂停、继续、单步、重置与多倍速运行。
 - CPU 甘特图、当前时刻标记、实时事件流、PCB 指标和算法规则排序队列。
 - MLFQ Q0/Q1/Q2 独立队列可视化，支持时间片降级与周期性 Priority Boost。
-- 6 组可复现实验预设与 7 种算法一键对比，输出等待、周转、带权周转、响应、CPU 利用率、吞吐率和上下文切换等指标。
+- 6 组可复现实验预设与 7 种算法一键对比，输出等待、周转、带权周转、响应、CPU 利用率、吞吐率和上下文切换等指标；批量计算在线程中执行，支持实时进度与取消。
 - Windows、Linux、Android 与 iOS 调度机制交互式分析，含技术/经济原因、横向对比矩阵及 12 个官方资料入口。
 - JSON 实验数据集导入/导出，CSV 总表与进程明细导出，甘特图和性能图表 PNG 导出，以及包含实验配置、指标、结论、图表和逐进程明细的整页 PDF 报告。
-- 系统设置支持总内存、I/O 设备数、默认时间片和仿真速度配置，提供合法性校验、运行中锁定、示例数据恢复和全部数据重置。
+- 系统设置支持总内存、I/O 设备数、默认时间片和仿真速度配置，提供持久化、合法性校验、运行中锁定、示例数据恢复和全部数据重置。
 - 内置帮助与关于页面，集中说明使用流程、算法适用场景、常见问题和项目技术信息。
+- 当前采用单 CPU、离散 Tick、单次作业模型；`Period` 作为周期任务扩展元数据保存，尚不自动重复释放任务。
 
 ## 运行
 
@@ -22,7 +23,7 @@
 python main.py
 ```
 
-若使用项目虚拟环境，请先安装 `requirements.txt` 中的依赖。
+若使用项目虚拟环境，请先安装 `requirements.txt` 中的依赖；参与开发时安装 `requirements-dev.txt`。
 
 ## 测试
 
@@ -30,7 +31,14 @@ python main.py
 pytest -q
 ```
 
-当前自动化回归共 156 项，覆盖数据模型、资源事务、全部调度算法、Priority Aging、仿真状态机、指标对比、数据导入导出、PDF 报告、系统设置、系统分析与核心 UI 交互。无显示器环境可设置 `QT_QPA_PLATFORM=offscreen`。
+当前自动化回归共 164 项，覆盖数据模型、资源事务、全部调度算法、Priority Aging、仿真状态机、后台实验、指标对比、数据导入导出、PDF 报告、持久化设置、系统分析与核心 UI 交互；语句与分支综合覆盖率超过 91%。无显示器环境可设置 `QT_QPA_PLATFORM=offscreen`。
+
+```powershell
+python -m ruff check app tests main.py
+pytest --cov=app --cov-report=term-missing
+```
+
+GitHub Actions 会在 Windows + Python 3.11.9 环境中自动执行相同的静态检查、测试与 90% 覆盖率门禁。
 
 ## 项目结构
 

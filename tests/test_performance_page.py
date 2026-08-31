@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEventLoop, Qt, QTimer
 
 from app.services.experiment_service import ExperimentService
 from app.services.process_manager import ProcessManager
@@ -135,3 +135,24 @@ def test_performance_page_exports_complete_pdf_report(qapp, monkeypatch, tmp_pat
     assert target.exists()
     assert target.stat().st_size > 50_000
     assert "PDF" in page.status_label.text()
+
+
+def test_performance_page_supports_aging_and_background_run(qapp):
+    manager, page = make_page()
+    page.dataset_combo.setCurrentIndex(1)
+    page.aging_combo.setCurrentIndex(1)
+    page.start_comparison()
+    assert page._thread is not None
+    assert not page.cancel_button.isHidden()
+
+    loop = QEventLoop()
+    thread = page._thread
+    thread.finished.connect(loop.quit)
+    QTimer.singleShot(5000, loop.quit)
+    loop.exec()
+    qapp.processEvents()
+
+    assert page.report is not None
+    assert any("+ Aging" in result.algorithm_name for result in page.report.results)
+    assert page.status_label.text() == "●  比较完成"
+    assert page._thread is None

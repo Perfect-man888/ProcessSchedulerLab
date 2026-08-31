@@ -1,14 +1,14 @@
 from app.models.process import ProcessState
+from app.services.export_service import ExportService
 from app.services.process_manager import ProcessManager
 from app.services.resource_manager import ResourceManager
 from app.services.simulation_service import SimulationService
-from app.services.export_service import ExportService
-from app.ui.process_page import CreateProcessDialog, ProcessPage
 from app.ui.main_window import MainWindow
+from app.ui.process_page import CreateProcessDialog, ProcessPage
+from app.widgets.dialogs import MessageDialog
 from app.widgets.filter_combo import FilterCombo
 from app.widgets.number_input import NumberInput
 from app.widgets.state_badge import StateBadge
-from app.widgets.dialogs import MessageDialog
 
 
 def test_number_input_clamps_values(qapp):
@@ -57,6 +57,15 @@ def test_create_dialog_fits_minimum_supported_screen(qapp):
 
     assert dialog.sizeHint().height() <= 720
     assert dialog.sizeHint().width() <= 1200
+
+
+def test_create_dialog_uses_configured_resource_limits(qapp):
+    resources = ResourceManager()
+    resources.configure_totals(65536, 128)
+    dialog = CreateProcessDialog(ProcessManager(resources))
+
+    assert dialog.memory_input.maximum == 65536
+    assert dialog.io_input.maximum == 128
 
 
 def test_process_page_refreshes_table_and_state_badge(qapp):

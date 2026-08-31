@@ -331,15 +331,45 @@ class ExportService:
                 chart_files.append(chart_path)
             if chart_files:
                 story.append(Paragraph("三、性能对比图表", heading_style))
-                images = [Image(str(item), width=120 * mm, height=66 * mm) for item in chart_files[:2]]
+                images = [Image(str(item), width=120 * mm, height=76 * mm) for item in chart_files[:2]]
                 chart_table = Table([images], colWidths=[125 * mm] * len(images))
                 chart_table.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]))
                 story.append(chart_table)
 
+            metrics = report.results[0].process_metrics
+            story.append(Paragraph("实验口径与复现参数", heading_style))
+            metadata = [
+                [text("进程数"), text("总服务时间"), text("到达区间"), text("实时任务")],
+                [
+                    text(len(metrics)),
+                    text(f"{sum(item.burst_time for item in metrics)} Tick"),
+                    text(f"T={min(item.arrival_time for item in metrics)}–{max(item.arrival_time for item in metrics)}"),
+                    text(sum(item.deadline is not None for item in metrics)),
+                ],
+            ]
+            metadata_table = Table(metadata, colWidths=[60 * mm] * 4)
+            metadata_table.setStyle(table_style)
+            story.append(metadata_table)
+            if report.parameters:
+                story.append(
+                    Paragraph(
+                        " · ".join(f"{name}: {value}" for name, value in report.parameters),
+                        body_style,
+                    )
+                )
+            story.append(
+                Paragraph(
+                    "口径：当前采用单 CPU、离散 Tick、单次作业模型；等待时间 = 周转时间 - 服务时间，"
+                    "CPU 利用率 = 忙碌 Tick / 总 Tick。Period 作为周期任务扩展元数据保存，不自动重复释放任务。",
+                    body_style,
+                )
+            )
+
             story.extend([PageBreak(), Paragraph("四、各算法进程明细", title_style)])
             for algorithm_index, result in enumerate(report.results):
                 story.append(Paragraph(result.algorithm_name, heading_style))
-                detail_text = lambda value: text(value, detail_style)
+                def detail_text(value):
+                    return text(value, detail_style)
                 detail_data = [[
                     detail_text("PID"), detail_text("到达"), detail_text("服务"), detail_text("开始"), detail_text("完成"),
                     detail_text("等待"), detail_text("周转"), detail_text("带权周转"), detail_text("响应"), detail_text("Deadline"),

@@ -1,8 +1,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QFrame,
     QFileDialog,
+    QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QHeaderView,
@@ -19,10 +19,10 @@ from PySide6.QtWidgets import (
 from app.models.process import Process, ProcessState
 from app.models.simulation_event import SimulationEventType
 from app.models.simulation_state import SimulationStatus
-from app.services.process_manager import ProcessManager
-from app.services.simulation_service import SimulationService
 from app.services.export_service import ExportService
+from app.services.process_manager import ProcessManager
 from app.services.settings_service import SettingsService
+from app.services.simulation_service import SimulationService
 from app.styles.theme import COLORS
 from app.widgets.dialogs import MessageDialog
 from app.widgets.filter_combo import FilterCombo
@@ -555,10 +555,11 @@ class SchedulerPage(QWidget):
             )
             if getattr(scheduler, "aging_interval", None):
                 rule = f"有效优先级升序 · 每 {scheduler.aging_interval} Tick Aging"
-                detail = lambda process: (
-                    f"有效 {scheduler.effective_priority(process, now)} / "
-                    f"原始 {process.priority}"
-                )
+                def detail(process):
+                    return (
+                        f"有效 {scheduler.effective_priority(process, now)} / "
+                        f"原始 {process.priority}"
+                    )
         self.queue_rule_label.setText(f"排序依据：{rule}")
 
         is_mlfq = scheduler_name == "MLFQ"

@@ -17,6 +17,7 @@ class ExperimentReport:
     dataset_name: str
     results: tuple[ScheduleResult, ...]
     skipped: tuple[AlgorithmSkip, ...] = ()
+    parameters: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self):
         if not self.dataset_name.strip():
@@ -24,6 +25,8 @@ class ExperimentReport:
         names = [result.algorithm_name for result in self.results]
         if len(names) != len(set(names)):
             raise ValueError("同一实验报告不能包含重复算法。")
+        if len({name for name, _ in self.parameters}) != len(self.parameters):
+            raise ValueError("实验参数名称不能重复。")
 
     def best(self, metric: str, *, maximize: bool = False) -> tuple[ScheduleResult, ...]:
         if not self.results:

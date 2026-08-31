@@ -10,11 +10,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.services.experiment_service import ExperimentService
 from app.services.process_manager import ProcessManager
 from app.services.resource_manager import ResourceManager
-from app.services.simulation_service import SimulationService
-from app.services.experiment_service import ExperimentService
 from app.services.settings_service import SettingsService
+from app.services.simulation_service import SimulationService
 from app.styles.theme import (
     APP_NAME,
     APP_SUBTITLE,
@@ -25,12 +25,12 @@ from app.styles.theme import (
     WINDOW_MIN_WIDTH,
 )
 from app.ui.dashboard_page import DashboardPage
-from app.ui.process_page import ProcessPage
-from app.ui.performance_page import PerformancePage
-from app.ui.scheduler_page import SchedulerPage
-from app.ui.system_analysis_page import SystemAnalysisPage
-from app.ui.settings_page import SettingsPage
 from app.ui.help_about_page import HelpAboutPage
+from app.ui.performance_page import PerformancePage
+from app.ui.process_page import ProcessPage
+from app.ui.scheduler_page import SchedulerPage
+from app.ui.settings_page import SettingsPage
+from app.ui.system_analysis_page import SystemAnalysisPage
 
 
 class MainWindow(QMainWindow):
@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         self.settings_service = SettingsService(
             self.process_manager,
             self.simulation_service,
+            persist=True,
         )
 
         self.setWindowTitle(
@@ -222,13 +223,12 @@ class MainWindow(QMainWindow):
             )
         )
 
-        self.stack.addWidget(
-            PerformancePage(
-                self.process_manager,
-                self.experiment_service,
-                self.settings_service,
-            )
+        self.performance_page = PerformancePage(
+            self.process_manager,
+            self.experiment_service,
+            self.settings_service,
         )
+        self.stack.addWidget(self.performance_page)
 
         self.stack.addWidget(SystemAnalysisPage())
 
@@ -247,3 +247,7 @@ class MainWindow(QMainWindow):
             button.setChecked(i == index)
 
         self.stack.setCurrentIndex(index)
+
+    def closeEvent(self, event) -> None:
+        self.performance_page.shutdown_worker()
+        super().closeEvent(event)

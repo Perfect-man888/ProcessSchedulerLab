@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QSettings, Signal
 
 from app.models.process import Process
 from app.models.simulation_state import SimulationStatus
@@ -19,12 +19,21 @@ class SettingsService(QObject):
         process_manager: ProcessManager,
         simulation_service: SimulationService,
         parent=None,
+        *,
+        persist: bool = False,
+        store: QSettings | None = None,
     ):
         super().__init__(parent)
         self.process_manager = process_manager
         self.simulation_service = simulation_service
+        self._store = store or (
+            QSettings("ProcessSchedulerLab", "ProcessSchedulerLab")
+            if persist
+            else None
+        )
         self.default_quantum = 2
         self.default_speed = 1.0
+        self._load_persistent()
 
     @property
     def is_locked(self) -> bool:
@@ -52,6 +61,7 @@ class SettingsService(QObject):
         self.default_quantum = default_quantum
         self.default_speed = float(default_speed)
         self.simulation_service.set_speed(self.default_speed)
+        self._save_persistent()
         self.changed.emit()
 
     def restore_defaults(self) -> None:
@@ -83,3 +93,31 @@ class SettingsService(QObject):
     def _require_unlocked(self) -> None:
         if self.is_locked:
             raise ValueError("调度仿真正在运行，请先暂停后再修改系统设置。")
+
+    def _load_persistent(self) -> None:
+        if self._store is None:
+            return
+        resource = self.process_manager.resource_manager.resource
+        try:
+            memory = int(self._store.value("resources/total_memory_mb", resource.total_memory_mb))
+            io_devices = int(self._store.value("resources/total_io_devices", resource.total_io_devices))
+            quantum = int(self._store.value("simulation/default_quantum", 2))
+            speed = float(self._store.value("simulation/default_speed", 1.0))
+            if not 1 <= quantum <= 20 or speed not in self.SPEEDS:
+                raise ValueError
+            self.process_manager.resource_manager.configure_totals(memory, io_devices)
+        except (TypeError, ValueError):
+            return
+        self.default_quantum = quantum
+        self.default_speed = speed
+        self.simulation_service.set_speed(speed)
+
+    def _save_persistent(self) -> None:
+        if self._store is None:
+            return
+        resource = self.process_manager.resource_manager.resource
+        self._store.setValue("resources/total_memory_mb", resource.total_memory_mb)
+        self._store.setValue("resources/total_io_devices", resource.total_io_devices)
+        self._store.setValue("simulation/default_quantum", self.default_quantum)
+        self._store.setValue("simulation/default_speed", self.default_speed)
+        self._store.sync()

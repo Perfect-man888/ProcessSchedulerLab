@@ -2,8 +2,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
-    QFormLayout,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -18,18 +18,14 @@ from PySide6.QtWidgets import (
 
 from app.models.process import ProcessState
 from app.models.simulation_state import SimulationStatus
+from app.services.export_service import ExportService
 from app.services.process_manager import ProcessManager
 from app.services.simulation_service import SimulationService
-from app.services.export_service import ExportService
-from app.styles.theme import (
-    COLORS,
-    TOTAL_IO_DEVICES,
-    TOTAL_MEMORY_MB,
-)
-from app.widgets.stat_card import StatCard
+from app.styles.theme import COLORS
 from app.widgets.dialogs import MessageDialog
 from app.widgets.filter_combo import FilterCombo
 from app.widgets.number_input import NumberInput
+from app.widgets.stat_card import StatCard
 from app.widgets.state_badge import StateBadge
 
 
@@ -87,8 +83,14 @@ class CreateProcessDialog(QDialog):
         self.arrival_input = NumberInput(0, 9999, 0, "tick")
         self.burst_input = NumberInput(1, 9999, 5, "tick")
         self.priority_input = NumberInput(1, 99, 5)
-        self.memory_input = NumberInput(64, TOTAL_MEMORY_MB, 256, "MB")
-        self.io_input = NumberInput(0, TOTAL_IO_DEVICES, 0, "台")
+        resource = self.manager.resource_manager.resource
+        self.memory_input = NumberInput(
+            64,
+            resource.total_memory_mb,
+            min(256, resource.total_memory_mb),
+            "MB",
+        )
+        self.io_input = NumberInput(0, resource.total_io_devices, 0, "台")
         self.deadline_input = NumberInput(1, 99999, 10, "tick")
         self.period_input = NumberInput(1, 99999, 20, "tick")
 
@@ -103,7 +105,6 @@ class CreateProcessDialog(QDialog):
         resource_form.addRow("内存需求", self.memory_input)
         resource_form.addRow("I/O 设备", self.io_input)
 
-        resource = self.manager.resource_manager.resource
         available = QLabel(
             f"当前可用：{resource.free_memory_mb} MB 内存 · "
             f"{resource.free_io_devices} 台 I/O 设备"
@@ -116,7 +117,7 @@ class CreateProcessDialog(QDialog):
         self.realtime_toggle.setObjectName("RealtimeToggle")
         realtime_form.addRow("实时任务", self.realtime_toggle)
         realtime_form.addRow("Deadline", self.deadline_input)
-        realtime_form.addRow("Period", self.period_input)
+        realtime_form.addRow("Period（扩展字段）", self.period_input)
         secondary_sections = QHBoxLayout()
         secondary_sections.setSpacing(14)
         secondary_sections.addWidget(resource_section, 1)
@@ -129,7 +130,7 @@ class CreateProcessDialog(QDialog):
 
         note = QLabel(
             "提示：优先级数字越小表示优先级越高；"
-            "Deadline 和 Period 为实时调度扩展参数。"
+            "Deadline 参与 EDF；当前采用单次作业模型，Period 作为周期任务扩展元数据保存。"
         )
         note.setWordWrap(True)
         note.setObjectName("DialogNote")
@@ -358,7 +359,7 @@ class ProcessPage(QWidget):
         self.memory_card = StatCard(
             "MEMORY",
             "0 MB",
-            f"系统总内存 {TOTAL_MEMORY_MB} MB",
+            f"系统总内存 {self.manager.resource_manager.resource.total_memory_mb} MB",
             "RAM",
             COLORS["success"],
         )
@@ -410,6 +411,7 @@ class ProcessPage(QWidget):
                 "运行",
                 "挂起",
                 "完成",
+                "新建",
             ]
         )
 
@@ -709,6 +711,7 @@ class ProcessPage(QWidget):
         )
 
         state_mapping = {
+            "新建": ProcessState.NEW,
             "就绪": ProcessState.READY,
             "运行": ProcessState.RUNNING,
             "挂起": ProcessState.SUSPENDED,

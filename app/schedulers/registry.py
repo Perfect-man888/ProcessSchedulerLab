@@ -9,7 +9,6 @@ from app.schedulers.round_robin import RoundRobinScheduler
 from app.schedulers.sjf import SJFScheduler
 from app.schedulers.srtf import SRTFScheduler
 
-
 SchedulerFactory = Callable[..., BaseScheduler]
 
 SCHEDULER_FACTORIES: dict[str, SchedulerFactory] = {

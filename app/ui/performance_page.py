@@ -1,8 +1,10 @@
-from PySide6.QtCore import Qt
+from threading import Event
+
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QFrame,
     QFileDialog,
+    QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QHeaderView,
@@ -16,9 +18,12 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.experiment_result import ExperimentReport
-from app.services.experiment_service import EXPERIMENT_PRESETS, ExperimentService
-from app.services.process_manager import ProcessManager
+from app.services.experiment_service import (
+    EXPERIMENT_PRESETS,
+    ExperimentService,
+)
 from app.services.export_service import ExportService
+from app.services.process_manager import ProcessManager
 from app.services.settings_service import SettingsService
 from app.styles.theme import COLORS
 from app.widgets.dialogs import MessageDialog
@@ -48,6 +53,38 @@ class NumericItem(QTableWidgetItem):
         return self.text().casefold() < other.text().casefold()
 
 
+class ExperimentWorker(QObject):
+    """在线程中运行批量实验，避免大数据集阻塞界面。"""
+
+    progress = Signal(int, str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, processes, options: dict, parent=None):
+        super().__init__(parent)
+        self.processes = tuple(processes)
+        self.options = dict(options)
+        self._cancelled = Event()
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+
+    @Slot()
+    def run(self) -> None:
+        service = ExperimentService()
+        service.progress.connect(self.progress.emit)
+        try:
+            report = service.run_all(
+                self.processes,
+                should_cancel=self._cancelled.is_set,
+                **self.options,
+            )
+        except (ValueError, RuntimeError) as error:
+            self.failed.emit(str(error))
+            return
+        self.succeeded.emit(report)
+
+
 class PerformancePage(QWidget):
     """固定预设与当前 PCB 数据上的全算法量化比较页面。"""
 
@@ -63,6 +100,8 @@ class PerformancePage(QWidget):
         self.experiment_service = experiment_service
         self.settings_service = settings_service
         self.report: ExperimentReport | None = None
+        self._thread: QThread | None = None
+        self._worker: ExperimentWorker | None = None
 
         self._build_ui()
         if self.settings_service is not None:
@@ -150,12 +189,22 @@ class PerformancePage(QWidget):
         row.addWidget(self._field("数据来源", self.dataset_combo), 3)
         self.quantum_input = NumberInput(1, 20, 2, "Tick")
         row.addWidget(self._field("RR 时间片", self.quantum_input), 1)
+        self.aging_combo = FilterCombo()
+        self.aging_combo.setObjectName("AnalysisCombo")
+        self.aging_combo.addItems(["关闭", "2 Tick", "4 Tick", "6 Tick"])
+        row.addWidget(self._field("Priority Aging", self.aging_combo), 1)
         self.run_button = QPushButton("▶  运行全部算法")
         self.run_button.setObjectName("SuccessButton")
         self.run_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.run_button.setMinimumHeight(42)
-        self.run_button.clicked.connect(self.run_comparison)
+        self.run_button.clicked.connect(self.start_comparison)
         row.addWidget(self.run_button, 1, Qt.AlignmentFlag.AlignBottom)
+        self.cancel_button = QPushButton("取消实验")
+        self.cancel_button.setObjectName("SecondaryButton")
+        self.cancel_button.setMinimumHeight(42)
+        self.cancel_button.clicked.connect(self.cancel_comparison)
+        self.cancel_button.setVisible(False)
+        row.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignBottom)
         layout.addLayout(row)
         return panel
 
@@ -305,6 +354,7 @@ class PerformancePage(QWidget):
                 processes,
                 dataset_name=name,
                 rr_quantum=self.quantum_input.value(),
+                priority_aging_interval=self._aging_interval(),
             )
         except (ValueError, RuntimeError) as error:
             MessageDialog.show_error(self, "实验运行失败", str(error))
@@ -317,6 +367,97 @@ class PerformancePage(QWidget):
         self._set_status("●  比较完成", "finished")
         self._refresh_dataset_summary()
         return True
+
+    def start_comparison(self) -> None:
+        if self._thread is not None:
+            return
+        name, processes = self._selected_dataset()
+        if not processes:
+            return
+
+        options = {
+            "dataset_name": name,
+            "rr_quantum": self.quantum_input.value(),
+            "priority_aging_interval": self._aging_interval(),
+        }
+        self.report = None
+        self._set_experiment_controls(True)
+        self._set_status("●  正在计算", "running")
+
+        thread = QThread(self)
+        worker = ExperimentWorker(processes, options)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_progress)
+        worker.succeeded.connect(self._on_async_success)
+        worker.failed.connect(self._on_async_failure)
+        worker.succeeded.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._clear_worker)
+        self._thread = thread
+        self._worker = worker
+        thread.start()
+
+    def cancel_comparison(self) -> None:
+        if self._worker is None:
+            return
+        self._worker.cancel()
+        self.cancel_button.setEnabled(False)
+        self._set_status("●  正在取消", "running")
+
+    @Slot(object)
+    def _on_async_success(self, report: ExperimentReport) -> None:
+        self.report = report
+        self._render_report(report)
+        self._set_status("●  比较完成", "finished")
+        self._set_experiment_controls(False)
+        self._refresh_dataset_summary()
+
+    @Slot(str)
+    def _on_async_failure(self, message: str) -> None:
+        cancelled = message == "实验已取消。"
+        if not cancelled:
+            MessageDialog.show_error(self, "实验运行失败", message)
+        self._set_status("●  已取消" if cancelled else "●  运行失败", "idle" if cancelled else "error")
+        self._set_experiment_controls(False)
+        self._refresh_dataset_summary()
+
+    @Slot()
+    def _clear_worker(self) -> None:
+        thread = self._thread
+        self._worker = None
+        self._thread = None
+        if thread is not None:
+            thread.deleteLater()
+
+    def _set_experiment_controls(self, running: bool) -> None:
+        self.dataset_combo.setEnabled(not running)
+        self.quantum_input.setEnabled(not running)
+        self.aging_combo.setEnabled(not running)
+        self.run_button.setEnabled(not running)
+        self.cancel_button.setVisible(running)
+        self.cancel_button.setEnabled(running)
+        for button in (
+            self.export_csv_button,
+            self.export_charts_button,
+            self.export_pdf_button,
+        ):
+            button.setEnabled(not running and self.report is not None)
+
+    def _aging_interval(self) -> int | None:
+        return (None, 2, 4, 6)[self.aging_combo.currentIndex()]
+
+    def shutdown_worker(self) -> None:
+        if self._worker is not None:
+            self._worker.cancel()
+        if self._thread is not None:
+            self._thread.quit()
+            self._thread.wait(3000)
+
+    def closeEvent(self, event) -> None:
+        self.shutdown_worker()
+        super().closeEvent(event)
 
     def _on_progress(self, percent: int, algorithm: str) -> None:
         if percent < 100:

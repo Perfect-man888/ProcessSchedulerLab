@@ -69,17 +69,6 @@ class ProcessManager(QObject):
         return counts
 
     # =========================================================
-    # PID 分配
-    # =========================================================
-
-    def _generate_pid(self) -> str:
-        pid = f"P{self._next_pid:03d}"
-
-        self._next_pid += 1
-
-        return pid
-
-    # =========================================================
     # 创建进程
     # =========================================================
 
@@ -134,25 +123,18 @@ class ProcessManager(QObject):
                 "Period 必须大于 0。"
             )
 
-        # 先申请系统资源
-        self.resource_manager.allocate(
-            memory_mb,
-            io_devices,
-        )
-
-        if pid is None:
-            pid = self._generate_pid()
+        automatic_pid = pid is None
+        if automatic_pid:
+            resolved_pid = f"P{self._next_pid:03d}"
         else:
-            pid = pid.strip()
-            if not pid:
+            resolved_pid = pid.strip()
+            if not resolved_pid:
                 raise ValueError("PID 不能为空。")
-            if pid in self._processes:
-                raise ValueError(f"PID {pid} 已存在。")
-            if pid.startswith("P") and pid[1:].isdigit():
-                self._next_pid = max(self._next_pid, int(pid[1:]) + 1)
+            if resolved_pid in self._processes:
+                raise ValueError(f"PID {resolved_pid} 已存在。")
 
         process = Process(
-            pid=pid,
+            pid=resolved_pid,
             name=name,
             arrival_time=arrival_time,
             burst_time=burst_time,
@@ -161,24 +143,37 @@ class ProcessManager(QObject):
             period=period,
             memory_mb=memory_mb,
             io_devices=io_devices,
-            state=ProcessState.NEW,
+            state=(
+                ProcessState.READY
+                if arrival_time <= self.simulation_time
+                else ProcessState.NEW
+            ),
         )
 
-        self._processes[pid] = process
+        # 全部字段和 PID 校验完成后才申请资源，保证失败操作不泄漏资源。
+        self.resource_manager.allocate(memory_mb, io_devices)
+
+        if automatic_pid:
+            self._next_pid += 1
+        elif resolved_pid.startswith("P") and resolved_pid[1:].isdigit():
+            self._next_pid = max(self._next_pid, int(resolved_pid[1:]) + 1)
+
+        self._processes[resolved_pid] = process
 
         self._emit_activity(
             "CREATE",
-            pid,
+            resolved_pid,
             f"创建进程 {name}",
         )
 
-        # 创建完成后进入就绪状态
-        process.state = ProcessState.READY
-
         self._emit_activity(
             "STATE",
-            pid,
-            "NEW → READY",
+            resolved_pid,
+            (
+                "NEW → READY"
+                if process.state is ProcessState.READY
+                else f"保持 NEW，等待 T={arrival_time} 到达"
+            ),
         )
 
         self.changed.emit()
@@ -224,7 +219,7 @@ class ProcessManager(QObject):
     def activate_process(
         self,
         pid: str,
-        target_state: ProcessState = ProcessState.READY,
+        target_state: ProcessState | None = None,
     ):
         process = self._require_process(pid)
 
@@ -233,6 +228,12 @@ class ProcessManager(QObject):
                 "只有挂起进程才能执行激活操作。"
             )
 
+        if target_state is None:
+            target_state = (
+                ProcessState.READY
+                if process.arrival_time <= self.simulation_time
+                else ProcessState.NEW
+            )
         if target_state not in {ProcessState.NEW, ProcessState.READY}:
             raise ValueError("激活后的目标状态只能是 NEW 或 READY。")
 

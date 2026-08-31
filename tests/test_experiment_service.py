@@ -1,7 +1,11 @@
 import pytest
 
 from app.models.process import Process, ProcessState
-from app.services.experiment_service import EXPERIMENT_PRESETS, ExperimentService
+from app.services.experiment_service import (
+    EXPERIMENT_PRESETS,
+    ExperimentCancelled,
+    ExperimentService,
+)
 from app.services.process_manager import ProcessManager
 from app.services.resource_manager import ResourceManager
 
@@ -117,3 +121,30 @@ def test_explicit_pid_creation_advances_auto_allocator(qapp):
 def test_experiment_rejects_empty_dataset(qapp):
     with pytest.raises(ValueError, match="不能为空"):
         ExperimentService().run_all([])
+
+
+def test_comparison_auto_sizes_isolated_resources(qapp):
+    source = [
+        Process("P001", "Large-A", 0, 2, 1, 10, memory_mb=6000, io_devices=5),
+        Process("P002", "Large-B", 1, 2, 2, 12, memory_mb=6000, io_devices=5),
+    ]
+
+    report = ExperimentService().run_all(source)
+
+    assert len(report.results) == 7
+
+
+def test_priority_aging_option_is_forwarded_to_batch_experiment(qapp):
+    source = [make_process("P001", 0, 3, 8, 20), make_process("P002", 1, 2, 1, 10)]
+
+    report = ExperimentService().run_all(source, priority_aging_interval=2)
+
+    assert any(result.algorithm_name == "Priority (Preemptive) + Aging" for result in report.results)
+    assert ("Priority Aging", "2 Tick") in report.parameters
+
+
+def test_batch_experiment_can_be_cancelled(qapp):
+    source = [make_process("P001", 0, 3, deadline=10)]
+
+    with pytest.raises(ExperimentCancelled, match="已取消"):
+        ExperimentService().run_all(source, should_cancel=lambda: True)

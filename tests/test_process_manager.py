@@ -95,6 +95,34 @@ def test_create_rejects_resource_shortage_atomically(manager):
     assert manager.resource_manager.resource.used_io_devices == 0
 
 
+def test_duplicate_or_blank_pid_does_not_leak_resources(manager):
+    create_process(manager, pid="P001", memory_mb=100, io_devices=1)
+
+    for invalid_pid in ("P001", "   "):
+        with pytest.raises(ValueError):
+            create_process(
+                manager,
+                pid=invalid_pid,
+                memory_mb=200,
+                io_devices=2,
+            )
+
+    assert len(manager.processes) == 1
+    assert manager.resource_manager.resource.used_memory_mb == 100
+    assert manager.resource_manager.resource.used_io_devices == 1
+
+
+def test_future_arrival_remains_new_until_simulation_admits_it(manager):
+    process = create_process(manager, arrival_time=5, deadline=10)
+
+    assert process.state is ProcessState.NEW
+    assert manager.state_counts()[ProcessState.NEW] == 1
+
+    manager.suspend_process(process.pid)
+    manager.activate_process(process.pid)
+    assert process.state is ProcessState.NEW
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
@@ -115,7 +143,7 @@ def test_create_rejects_invalid_realtime_parameters(
 
 
 def test_state_counts_include_all_states(manager):
-    ready = create_process(manager)
+    create_process(manager)
     suspended = create_process(manager, name="Editor")
     manager.suspend_process(suspended.pid)
 

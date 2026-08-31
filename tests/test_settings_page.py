@@ -1,4 +1,5 @@
 import pytest
+from PySide6.QtCore import QSettings
 
 from app.models.simulation_state import SimulationStatus
 from app.services.process_manager import ProcessManager
@@ -103,3 +104,32 @@ def test_help_page_and_main_window_have_no_placeholder_navigation(qapp):
     assert isinstance(window.stack.widget(6), HelpAboutPage)
     assert window.stack.count() == 7
     window.close()
+
+
+def test_settings_can_persist_between_service_instances(qapp, tmp_path):
+    path = str(tmp_path / "settings.ini")
+    manager, simulation, _ = make_services()
+    settings = SettingsService(
+        manager,
+        simulation,
+        store=QSettings(path, QSettings.Format.IniFormat),
+    )
+    settings.apply(
+        total_memory_mb=16384,
+        total_io_devices=16,
+        default_quantum=5,
+        default_speed=2.0,
+    )
+
+    new_manager = ProcessManager(ResourceManager())
+    new_simulation = SimulationService(new_manager)
+    restored = SettingsService(
+        new_manager,
+        new_simulation,
+        store=QSettings(path, QSettings.Format.IniFormat),
+    )
+
+    assert new_manager.resource_manager.resource.total_memory_mb == 16384
+    assert new_manager.resource_manager.resource.total_io_devices == 16
+    assert restored.default_quantum == 5
+    assert restored.default_speed == 2.0

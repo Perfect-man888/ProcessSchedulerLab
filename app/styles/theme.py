@@ -1,6 +1,6 @@
 APP_NAME = "ProcessSchedulerLab"
 APP_SUBTITLE = "操作系统进程调度与资源管理可视化仿真平台"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 WINDOW_MIN_WIDTH = 1280
 WINDOW_MIN_HEIGHT = 760
