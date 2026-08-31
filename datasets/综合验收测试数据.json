@@ -1,0 +1,95 @@
+{
+  "schema": "process-scheduler-lab.dataset",
+  "version": 1,
+  "exported_at": "2026-08-31T00:00:00+08:00",
+  "processes": [
+    {
+      "pid": "P001",
+      "name": "Kernel-Boot",
+      "arrival_time": 0,
+      "burst_time": 12,
+      "priority": 7,
+      "deadline": 36,
+      "period": 40,
+      "memory_mb": 1024,
+      "io_devices": 1
+    },
+    {
+      "pid": "P002",
+      "name": "UI-Input",
+      "arrival_time": 0,
+      "burst_time": 2,
+      "priority": 2,
+      "deadline": 5,
+      "period": 10,
+      "memory_mb": 256,
+      "io_devices": 1
+    },
+    {
+      "pid": "P003",
+      "name": "Compiler",
+      "arrival_time": 1,
+      "burst_time": 7,
+      "priority": 5,
+      "deadline": 20,
+      "period": 30,
+      "memory_mb": 1536,
+      "io_devices": 1
+    },
+    {
+      "pid": "P004",
+      "name": "Emergency-Control",
+      "arrival_time": 2,
+      "burst_time": 3,
+      "priority": 1,
+      "deadline": 8,
+      "period": 12,
+      "memory_mb": 512,
+      "io_devices": 1
+    },
+    {
+      "pid": "P005",
+      "name": "Logger",
+      "arrival_time": 3,
+      "burst_time": 5,
+      "priority": 8,
+      "deadline": 18,
+      "period": 18,
+      "memory_mb": 512,
+      "io_devices": 1
+    },
+    {
+      "pid": "P006",
+      "name": "Short-Query",
+      "arrival_time": 4,
+      "burst_time": 1,
+      "priority": 3,
+      "deadline": 10,
+      "period": 15,
+      "memory_mb": 256,
+      "io_devices": 0
+    },
+    {
+      "pid": "P007",
+      "name": "Background-Index",
+      "arrival_time": 5,
+      "burst_time": 10,
+      "priority": 9,
+      "deadline": 44,
+      "period": 50,
+      "memory_mb": 2048,
+      "io_devices": 2
+    },
+    {
+      "pid": "P008",
+      "name": "Sync-Service",
+      "arrival_time": 7,
+      "burst_time": 4,
+      "priority": 4,
+      "deadline": 24,
+      "period": 24,
+      "memory_mb": 768,
+      "io_devices": 1
+    }
+  ]
+}
